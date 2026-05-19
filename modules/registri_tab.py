@@ -17,7 +17,7 @@ import io
 import time
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import pathlib
 
 from modules.log_manager import aggiungi_log, aggiungi_al_diario
@@ -29,6 +29,34 @@ from modules.doc_viewer import render_doc_buttons
 # ---------------------------------------------------------------------------
 
 _STATI_RISERVA = ["iscritta", "confermata", "quantificata", "definita", "respinta"]
+
+_TIPI_RISERVA = [
+    "Maggiori quantità CME",
+    "Lavorazione/onere non previsto",
+    "Sospensione lavori",
+    "Variazione progettuale",
+    "Ritardo imputabile a SA",
+    "Interferenze impreviste",
+    "Altro",
+]
+
+_ATTI_CONTABILI = [
+    "Registro di contabilità",
+    "SAL (Stato Avanzamento Lavori)",
+    "Verbale di consegna",
+    "Verbale di sospensione",
+    "Verbale di ripresa",
+    "Ordine di Servizio",
+]
+
+_STATI_RISERVA_WIZARD = [
+    "Iscritta",
+    "Esplicitata",
+    "Accettata",
+    "Rigettata",
+    "In accordo bonario",
+    "Arbitrato",
+]
 _TIPI_VERBALE = [
     "consegna_lavori",
     "sospensione",
@@ -205,8 +233,392 @@ def render_registri_tab(
 
 
 # ===========================================================================
-# SEZIONE A — RISERVE
+# SEZIONE A — RISERVE (wizard 4-step Art. 120 D.Lgs. 36/2023)
 # ===========================================================================
+
+def _genera_pdf_riserva(riserva: dict, csa_data: dict) -> bytes | None:
+    """Genera PDF della riserva con stile carta intestata."""
+    try:
+        from fpdf import FPDF
+        FONT_REG  = str(pathlib.Path("fonts") / "DejaVuSans.ttf")
+        FONT_BOLD = str(pathlib.Path("fonts") / "DejaVuSans-Bold.ttf")
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.add_font("DejaVu", "",  FONT_REG,  uni=True)
+        pdf.add_font("DejaVu", "B", FONT_BOLD, uni=True)
+
+        def _sezione(titolo: str) -> None:
+            pdf.set_font("DejaVu", "B", 10)
+            pdf.set_fill_color(30, 80, 160)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(0, 7, titolo, ln=True, fill=True)
+            pdf.set_text_color(0, 0, 0)
+
+        def _riga(label: str, valore: str) -> None:
+            pdf.set_font("DejaVu", "B", 9)
+            pdf.cell(60, 6, f"  {label}:", border=0)
+            pdf.set_font("DejaVu", "", 9)
+            pdf.cell(0, 6, str(valore or "—"), ln=True)
+
+        # Titolo
+        pdf.set_font("DejaVu", "B", 13)
+        pdf.set_fill_color(30, 80, 160)
+        pdf.set_text_color(255, 255, 255)
+        rid = riserva.get("id", "—")
+        pdf.cell(0, 9, f"RISERVA {rid} — Art. 120 D.Lgs. 36/2023", ln=True, align="C", fill=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(4)
+
+        _sezione("DATI APPALTO")
+        _riga("Oggetto lavori", csa_data.get("tipo_lavori", "—"))
+        _riga("Stazione Appaltante", csa_data.get("stazione_appaltante", "—"))
+        _riga("Comune", f"{csa_data.get('comune', '—')} ({csa_data.get('provincia', '—')})")
+        _riga("CIG", csa_data.get("cig", "—"))
+        pdf.ln(3)
+
+        _sezione("EVENTO SCATENANTE")
+        _riga("Tipo riserva", riserva.get("tipo", riserva.get("causale", "—")))
+        _riga("Lavorazione interessata", riserva.get("lavorazione", "—"))
+        _riga("Data evento", riserva.get("data_evento", riserva.get("data_fatto_generatore", "—")))
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.cell(0, 6, "  Descrizione:", ln=True)
+        pdf.set_font("DejaVu", "", 9)
+        desc = riserva.get("descrizione_evento", riserva.get("causale", "—"))
+        pdf.multi_cell(0, 5, f"  {desc}")
+        pdf.ln(3)
+
+        _sezione("ATTO CONTABILE")
+        _riga("Atto", riserva.get("atto_contabile", "—"))
+        _riga("Numero/riferimento", riserva.get("numero_atto", riserva.get("numero", "—")))
+        _riga("Data atto", riserva.get("data_atto", riserva.get("data_iscrizione", "—")))
+        _riga("Scadenza esplicitazione (15 gg)", riserva.get("scadenza_esplicitazione", "—"))
+        _riga("Scadenza risposta DL (30 gg)", riserva.get("scadenza_risposta_dl", "—"))
+        pdf.ln(3)
+
+        _sezione("QUANTIFICAZIONE")
+        importo = riserva.get("importo_indicativo") or riserva.get("importo_richiesto") or 0.0
+        _riga("Importo indicativo", f"€ {float(importo):,.2f}")
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.cell(0, 6, "  Base di calcolo:", ln=True)
+        pdf.set_font("DejaVu", "", 9)
+        pdf.multi_cell(0, 5, f"  {riserva.get('base_calcolo', '—')}")
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.cell(0, 6, "  Causa:", ln=True)
+        pdf.set_font("DejaVu", "", 9)
+        pdf.multi_cell(0, 5, f"  {riserva.get('causa', riserva.get('causale', '—'))}")
+        pdf.ln(3)
+
+        if riserva.get("testo_riserva"):
+            _sezione("TESTO FORMALE DELLA RISERVA")
+            pdf.set_font("DejaVu", "", 8)
+            pdf.multi_cell(0, 5, riserva["testo_riserva"])
+            pdf.ln(3)
+
+        _sezione("STATO")
+        _riga("Stato attuale", riserva.get("stato", "—"))
+        _riga("Data creazione", riserva.get("data_creazione", "—"))
+
+        pdf.ln(12)
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.cell(90, 6, "Il Direttore dei Lavori", align="C")
+        pdf.cell(0, 6, "Il Rappresentante dell'Impresa", align="C", ln=True)
+        pdf.ln(14)
+        pdf.set_font("DejaVu", "", 9)
+        pdf.cell(90, 6, "_" * 35, align="C")
+        pdf.cell(0, 6, "_" * 35, align="C", ln=True)
+
+        buf = io.BytesIO()
+        pdf.output(buf)
+        buf.seek(0)
+        return buf.read()
+    except Exception as exc:
+        st.error(f"Errore generazione PDF riserva: {exc}")
+        return None
+
+
+def _wizard_nuova_riserva(riserve: list, results_dir: pathlib.Path, salva_fn) -> None:
+    """Wizard 4-step per iscrizione riserva Art. 120 D.Lgs. 36/2023."""
+
+    if "_wiz_ris_step" not in st.session_state:
+        st.session_state["_wiz_ris_step"] = 1
+    if "_wiz_ris_data" not in st.session_state:
+        st.session_state["_wiz_ris_data"] = {}
+
+    step = st.session_state["_wiz_ris_step"]
+    wdata = st.session_state["_wiz_ris_data"]
+
+    st.progress(step / 4, text=f"Step {step} di 4 — Iscrizione riserva Art. 120")
+    st.divider()
+
+    # ── STEP 1 — Evento scatenante ─────────────────────────────────────────────
+    if step == 1:
+        st.markdown("### 📋 Step 1: Identifica l'evento")
+        with st.form("wiz_ris_step1", clear_on_submit=False):
+            tipo_riserva = st.selectbox(
+                "Tipo riserva",
+                _TIPI_RISERVA,
+                index=_TIPI_RISERVA.index(wdata.get("tipo", _TIPI_RISERVA[0]))
+                      if wdata.get("tipo") in _TIPI_RISERVA else 0,
+            )
+            data_evento = st.date_input(
+                "Data in cui si è verificato l'evento",
+                value=_parse_data_sicura(wdata.get("data_evento")) or date.today(),
+            )
+            descrizione_evento = st.text_area(
+                "Descrizione evento",
+                value=wdata.get("descrizione_evento", ""),
+                placeholder="Descrivere cosa è successo...",
+                height=100,
+            )
+            lavorazione = st.text_input(
+                "Lavorazione interessata",
+                value=wdata.get("lavorazione", ""),
+                placeholder="Es. Copertura tetto in legno lamellare",
+            )
+            avanti = st.form_submit_button("Avanti →", type="primary")
+            if avanti:
+                if not lavorazione.strip():
+                    st.error("Indicare la lavorazione interessata.")
+                elif not descrizione_evento.strip():
+                    st.error("Descrivere l'evento scatenante.")
+                else:
+                    wdata.update({
+                        "tipo": tipo_riserva,
+                        "data_evento": data_evento.isoformat(),
+                        "descrizione_evento": descrizione_evento.strip(),
+                        "lavorazione": lavorazione.strip(),
+                    })
+                    st.session_state["_wiz_ris_step"] = 2
+                    st.rerun()
+
+    # ── STEP 2 — Atto contabile ────────────────────────────────────────────────
+    elif step == 2:
+        st.markdown("### 📄 Step 2: Atto contabile su cui iscrivere")
+        st.warning(
+            "⚠️ La riserva va iscritta sul **PRIMO atto contabile utile** successivo all'evento. "
+            "Non aspettare SAL successivi!"
+        )
+        with st.form("wiz_ris_step2", clear_on_submit=False):
+            atto_contabile = st.selectbox(
+                "Atto contabile",
+                _ATTI_CONTABILI,
+                index=_ATTI_CONTABILI.index(wdata.get("atto_contabile", _ATTI_CONTABILI[0]))
+                      if wdata.get("atto_contabile") in _ATTI_CONTABILI else 0,
+            )
+            numero_atto = st.text_input(
+                "Numero/riferimento atto",
+                value=wdata.get("numero_atto", ""),
+                placeholder="Es. SAL n.3, V-2024-05",
+            )
+            data_atto = st.date_input(
+                "Data atto contabile",
+                value=_parse_data_sicura(wdata.get("data_atto")) or date.today(),
+            )
+
+            scad_espl = data_atto + timedelta(days=15)
+            st.info(f"📅 Devi esplicitare e quantificare entro: **{scad_espl.strftime('%d/%m/%Y')}** (15 giorni dall'atto)")
+
+            col_b, col_n = st.columns(2)
+            with col_b:
+                indietro = st.form_submit_button("← Indietro")
+            with col_n:
+                avanti = st.form_submit_button("Avanti →", type="primary")
+
+            if indietro:
+                st.session_state["_wiz_ris_step"] = 1
+                st.rerun()
+            if avanti:
+                if not numero_atto.strip():
+                    st.error("Indicare il numero/riferimento dell'atto contabile.")
+                else:
+                    wdata.update({
+                        "atto_contabile": atto_contabile,
+                        "numero_atto": numero_atto.strip(),
+                        "data_atto": data_atto.isoformat(),
+                        "scadenza_esplicitazione": scad_espl.isoformat(),
+                        "scadenza_risposta_dl": (data_atto + timedelta(days=30)).isoformat(),
+                    })
+                    st.session_state["_wiz_ris_step"] = 3
+                    st.rerun()
+
+    # ── STEP 3 — Quantificazione ───────────────────────────────────────────────
+    elif step == 3:
+        st.markdown("### 💶 Step 3: Quantifica la riserva")
+
+        importo_indicativo = st.number_input(
+            "Importo indicativo € (da esplicitare entro 15 gg)",
+            min_value=0.0,
+            value=float(wdata.get("importo_indicativo", 0.0)),
+            step=100.0,
+            format="%.2f",
+            key="wiz_ris_importo",
+        )
+        base_calcolo = st.text_area(
+            "Base di calcolo",
+            value=wdata.get("base_calcolo", ""),
+            placeholder="Es: m³ 20,00 legname x € 450/m³ = € 9.000\noppure: nolo gru € 350/gg x 15gg = € 5.250",
+            height=80,
+            key="wiz_ris_base_calcolo",
+        )
+        causa = st.text_area(
+            "Causa della riserva (errore progettuale, carenza CME, ecc.)",
+            value=wdata.get("causa", ""),
+            height=80,
+            key="wiz_ris_causa",
+        )
+
+        # Testo riserva generato automaticamente
+        st.subheader("📝 Testo riserva generato automaticamente")
+        tipo_r  = wdata.get("tipo", "—")
+        lav_r   = wdata.get("lavorazione", "—")
+        dev_r   = wdata.get("data_evento", "—")
+        desc_r  = wdata.get("descrizione_evento", "—")
+        testo = (
+            f"Si iscrive riserva ai sensi dell'Art. 120 D.Lgs. 36/2023 per {tipo_r.lower()} "
+            f"relativa alla lavorazione: {lav_r}.\n"
+            f"Evento verificatosi in data {dev_r}.\n"
+            f"{desc_r}\n"
+            f"Importo indicativo: € {importo_indicativo:,.2f}\n"
+            f"Base di calcolo: {base_calcolo}\n"
+            f"Causa: {causa}\n"
+            f"Documentazione a supporto: allegata."
+        )
+        st.code(testo, language=None)
+
+        file_allegati = st.file_uploader(
+            "Allega documentazione (rilievi, preventivi, foto, DDT)",
+            accept_multiple_files=True,
+            type=_TIPI_FILE,
+            key="wiz_ris_allegati",
+        )
+
+        col_b, col_n = st.columns(2)
+        with col_b:
+            if st.button("← Indietro", key="wiz_ris_back3"):
+                wdata.update({
+                    "importo_indicativo": importo_indicativo,
+                    "base_calcolo": base_calcolo,
+                    "causa": causa,
+                    "testo_riserva": testo,
+                })
+                st.session_state["_wiz_ris_step"] = 2
+                st.rerun()
+        with col_n:
+            if st.button("Avanti →", type="primary", key="wiz_ris_next3"):
+                # Salva file allegati: leggi bytes ora, prima del rerun
+                allegati_salvati = []
+                if file_allegati:
+                    dest_dir = results_dir / "registri" / "riserve"
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    rid_temp = _prossimo_id(riserve)
+                    for f in file_allegati:
+                        nome = f"r{rid_temp}_{f.name}"
+                        (dest_dir / nome).write_bytes(f.getbuffer())
+                        allegati_salvati.append(nome)
+                wdata.update({
+                    "importo_indicativo": importo_indicativo,
+                    "base_calcolo": base_calcolo,
+                    "causa": causa,
+                    "testo_riserva": testo,
+                    "file_allegati": allegati_salvati,
+                })
+                st.session_state["_wiz_ris_step"] = 4
+                st.rerun()
+
+    # ── STEP 4 — Riepilogo e salvataggio ──────────────────────────────────────
+    elif step == 4:
+        st.markdown("### ✅ Step 4: Conferma e salva")
+
+        scad_espl_str = wdata.get("scadenza_esplicitazione", "")
+        scad_dl_str   = wdata.get("scadenza_risposta_dl", "")
+        scad_espl     = _parse_data_sicura(scad_espl_str)
+        giorni_espl   = (scad_espl - date.today()).days if scad_espl else None
+
+        with st.container(border=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"**Tipo riserva:** {wdata.get('tipo', '—')}")
+                st.markdown(f"**Lavorazione:** {wdata.get('lavorazione', '—')}")
+                st.markdown(f"**Data evento:** {wdata.get('data_evento', '—')}")
+                st.markdown(f"**Atto contabile:** {wdata.get('atto_contabile', '—')} — {wdata.get('numero_atto', '—')}")
+                st.markdown(f"**Data atto:** {wdata.get('data_atto', '—')}")
+            with c2:
+                importo_val = float(wdata.get("importo_indicativo") or 0.0)
+                st.markdown(f"**Importo indicativo:** {_formatta_importo(importo_val)}")
+                st.markdown(f"**Stato:** Iscritta")
+                if giorni_espl is not None:
+                    if giorni_espl <= 0:
+                        st.error(f"❌ Scadenza esplicitazione: **{scad_espl_str}** — SCADUTA")
+                    elif giorni_espl <= 5:
+                        st.error(f"🚨 Scadenza esplicitazione: **{scad_espl_str}** (tra {giorni_espl} gg)")
+                    else:
+                        st.markdown(f"⚠️ **Scadenza esplicitazione:** {scad_espl_str}")
+                st.markdown(f"⚠️ **Scadenza risposta DL:** {scad_dl_str}")
+
+            allegati = wdata.get("file_allegati", [])
+            if allegati:
+                st.markdown(f"**Allegati:** {', '.join(allegati)}")
+
+        col_b, col_s = st.columns(2)
+        with col_b:
+            if st.button("← Indietro", key="wiz_ris_back4"):
+                st.session_state["_wiz_ris_step"] = 3
+                st.rerun()
+        with col_s:
+            if st.button("💾 Salva Riserva", type="primary", key="wiz_ris_salva"):
+                nuova_id = _prossimo_id(riserve)
+                nuova = {
+                    "id": f"RIS-{len(riserve)+1:03d}",
+                    "tipo": wdata.get("tipo", ""),
+                    "lavorazione": wdata.get("lavorazione", ""),
+                    "data_evento": wdata.get("data_evento", ""),
+                    "descrizione_evento": wdata.get("descrizione_evento", ""),
+                    "atto_contabile": wdata.get("atto_contabile", ""),
+                    "numero_atto": wdata.get("numero_atto", ""),
+                    "data_atto": wdata.get("data_atto", ""),
+                    "scadenza_esplicitazione": wdata.get("scadenza_esplicitazione", ""),
+                    "scadenza_risposta_dl": wdata.get("scadenza_risposta_dl", ""),
+                    "importo_indicativo": float(wdata.get("importo_indicativo") or 0.0),
+                    "base_calcolo": wdata.get("base_calcolo", ""),
+                    "causa": wdata.get("causa", ""),
+                    "testo_riserva": wdata.get("testo_riserva", ""),
+                    "stato": "Iscritta",
+                    "file_allegati": wdata.get("file_allegati", []),
+                    "data_creazione": date.today().isoformat(),
+                    # Campi legacy per compatibilità con vecchia lista
+                    "numero": f"RIS-{len(riserve)+1:03d}",
+                    "causale": wdata.get("descrizione_evento", ""),
+                    "importo_richiesto": float(wdata.get("importo_indicativo") or 0.0),
+                    "importo_riconosciuto": 0.0,
+                    "data_iscrizione": wdata.get("data_atto", date.today().isoformat()),
+                    "data_fatto_generatore": wdata.get("data_evento", date.today().isoformat()),
+                    "documenti": wdata.get("file_allegati", []),
+                }
+                st.session_state.registri["riserve"].append(nuova)
+                aggiungi_log(
+                    "Riserva iscritta",
+                    f"{nuova['id']} — {nuova['tipo']} — {nuova['lavorazione'][:50]}",
+                    tab="Registri",
+                )
+                aggiungi_al_diario(
+                    f"Riserva {nuova['id']} iscritta: {nuova['tipo']} su {nuova['lavorazione'][:60]}",
+                    "📄 Documento / Verbale",
+                )
+                salva_fn()
+                # Reset wizard
+                st.session_state["_wiz_ris_step"] = 1
+                st.session_state["_wiz_ris_data"] = {}
+                st.success(f"✅ Riserva {nuova['id']} salvata con successo.")
+                st.rerun()
+
+        col_ann, _ = st.columns([1, 3])
+        with col_ann:
+            if st.button("✖ Annulla wizard", key="wiz_ris_annulla"):
+                st.session_state["_wiz_ris_step"] = 1
+                st.session_state["_wiz_ris_data"] = {}
+                st.rerun()
+
 
 def _render_riserve(csa_data, details, importo_netto, results_dir, salva_fn):
     st.subheader("📋 Registro Riserve")
@@ -215,166 +627,166 @@ def _render_riserve(csa_data, details, importo_netto, results_dir, salva_fn):
     riserve: list = st.session_state.registri["riserve"]
 
     # ── Riepilogo metriche ────────────────────────────────────────────────────
-    totale_richiesto = sum(r.get("importo_richiesto", 0.0) or 0.0 for r in riserve)
+    totale_importo = sum(
+        float(r.get("importo_indicativo") or r.get("importo_richiesto") or 0.0)
+        for r in riserve
+    )
     totale_riconosciuto = sum(r.get("importo_riconosciuto", 0.0) or 0.0 for r in riserve)
-    iscritte = [r for r in riserve if r.get("stato") == "iscritta"]
-    definite = [r for r in riserve if r.get("stato") == "definita"]
+    iscritte = [r for r in riserve if r.get("stato", "").lower() == "iscritta"]
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Totale riserve", len(riserve))
     col2.metric("Iscritte (aperte)", len(iscritte))
-    col3.metric("Importo richiesto", _formatta_importo(totale_richiesto))
+    col3.metric("Importo richiesto", _formatta_importo(totale_importo))
     col4.metric("Importo riconosciuto", _formatta_importo(totale_riconosciuto))
 
-    # ── Avviso termini violati ────────────────────────────────────────────────
-    termine_iscrizione = int(details.get("riserve_iscrizione_giorni") or 15)
-    violazioni = []
+    # Alert scadenze imminenti
+    oggi = date.today()
     for r in riserve:
-        data_is = _parse_data_sicura(r.get("data_iscrizione", ""))
-        data_fg = _parse_data_sicura(r.get("data_fatto_generatore", ""))
-        if data_is and data_fg:
-            delta = (data_is - data_fg).days
-            if delta > termine_iscrizione:
-                violazioni.append(r.get("numero", f"#{r.get('id')}"))
-
-    if violazioni:
-        st.warning(
-            f"⚠️ **Attenzione — Possibile termine violato** per le riserve: "
-            f"**{', '.join(violazioni)}**. "
-            f"L'iscrizione supera i {termine_iscrizione} giorni dal fatto generatore "
-            f"(art.120 D.Lgs.36/2023). Verificare la validità."
-        )
+        if r.get("stato", "").lower() != "iscritta":
+            continue
+        scad = _parse_data_sicura(r.get("scadenza_esplicitazione", ""))
+        if scad is None:
+            continue
+        gg = (scad - oggi).days
+        rid = r.get("id", r.get("numero", "—"))
+        lav = r.get("lavorazione", r.get("causale", "—"))[:40]
+        if gg <= 0:
+            st.error(f"❌ Riserva **{rid}** ({lav}): termine esplicitazione **SCADUTO** ({scad})")
+        elif gg <= 3:
+            st.error(f"🚨 Riserva **{rid}** ({lav}): esplicitare entro **{gg} giorni** ({scad})")
+        elif gg <= 7:
+            st.warning(f"⚠️ Riserva **{rid}** ({lav}): esplicitare entro **{gg} giorni** ({scad})")
 
     st.divider()
 
-    # ── Form nuova riserva ────────────────────────────────────────────────────
-    with st.expander("➕ Nuova riserva", expanded=False):
-        numero_auto = _numero_progressivo("R", riserve)
-        with st.form("form_nuova_riserva", clear_on_submit=True):
-            st.markdown("**Dati della riserva**")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                numero_riserva = st.text_input(
-                    "Numero riserva",
-                    value=numero_auto,
-                    key="reg_riserve_new_numero",
-                )
-                data_iscrizione = st.date_input(
-                    "Data iscrizione",
-                    value=date.today(),
-                    key="reg_riserve_new_data_iscr",
-                )
-                importo_richiesto = st.number_input(
-                    "Importo richiesto (€)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=100.0,
-                    format="%.2f",
-                    key="reg_riserve_new_importo_rich",
-                )
-            with col_b:
-                stato_riserva = st.selectbox(
-                    "Stato",
-                    options=_STATI_RISERVA,
-                    key="reg_riserve_new_stato",
-                )
-                data_fatto_gen = st.date_input(
-                    "Data fatto generatore",
-                    value=date.today(),
-                    key="reg_riserve_new_data_fatto",
-                )
-                importo_riconosciuto = st.number_input(
-                    "Importo riconosciuto (€)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=100.0,
-                    format="%.2f",
-                    key="reg_riserve_new_importo_ric",
-                )
-            causale = st.text_area(
-                "Causale della riserva",
-                placeholder="Descrivere il fatto generatore, le circostanze e le motivazioni della riserva...",
-                height=100,
-                key="reg_riserve_new_causale",
-            )
-            note_riserva = st.text_area(
-                "Note aggiuntive",
-                height=60,
-                key="reg_riserve_new_note",
-            )
-            submitted = st.form_submit_button("💾 Aggiungi riserva", type="primary")
-            if submitted:
-                if not causale.strip():
-                    st.error("La causale della riserva è obbligatoria.")
-                else:
-                    nuova = {
-                        "id": _prossimo_id(riserve),
-                        "numero": numero_riserva.strip() or numero_auto,
-                        "data_iscrizione": data_iscrizione.isoformat(),
-                        "data_fatto_generatore": data_fatto_gen.isoformat(),
-                        "causale": causale.strip(),
-                        "importo_richiesto": importo_richiesto,
-                        "importo_riconosciuto": importo_riconosciuto,
-                        "stato": stato_riserva,
-                        "note": note_riserva.strip(),
-                        "documenti": [],
-                    }
-                    st.session_state.registri["riserve"].append(nuova)
-                    aggiungi_log(
-                        "Riserva aggiunta",
-                        f"Riserva {nuova['numero']} — {causale[:60]}",
-                        tab="Registri",
-                    )
-                    aggiungi_al_diario(
-                        f"Riserva {nuova['numero']} iscritta: {causale[:80]}",
-                        "📄 Documento / Verbale",
-                    )
-                    salva_fn()
-                    st.success(f"Riserva {nuova['numero']} aggiunta con successo.")
-                    st.rerun()
+    # ── Wizard nuova riserva ──────────────────────────────────────────────────
+    step_corrente = st.session_state.get("_wiz_ris_step", 1)
+    label_exp = "➕ Nuova riserva — Wizard guidato" if step_corrente == 1 else f"🔄 Wizard in corso — Step {step_corrente}/4"
+    with st.expander(label_exp, expanded=(step_corrente > 1)):
+        _wizard_nuova_riserva(riserve, results_dir, salva_fn)
 
     st.divider()
 
     # ── Lista riserve ─────────────────────────────────────────────────────────
     if not riserve:
-        st.info("Nessuna riserva registrata. Utilizzare il form sopra per aggiungerne una.")
+        st.info("Nessuna riserva registrata. Usare il wizard sopra per iscrivere una riserva.")
         return
 
     st.markdown(f"**{len(riserve)} riserve registrate**")
 
     for idx, riserva in enumerate(riserve):
-        rid = riserva.get("id", idx)
-        numero_r = riserva.get("numero", f"#{rid}")
+        rid = riserva.get("id", f"#{idx+1}")
         stato_r = riserva.get("stato", "iscritta")
-        importo_r = riserva.get("importo_richiesto", 0.0) or 0.0
+        importo_r = float(riserva.get("importo_indicativo") or riserva.get("importo_richiesto") or 0.0)
+        lav_r = riserva.get("lavorazione", riserva.get("causale", "—"))[:45]
 
-        badge_colore = {
-            "iscritta": "🟡",
-            "confermata": "🔵",
-            "quantificata": "🟠",
-            "definita": "🟢",
-            "respinta": "🔴",
+        # Badge scadenza
+        scad_espl = _parse_data_sicura(riserva.get("scadenza_esplicitazione", ""))
+        badge_scad = ""
+        if scad_espl and stato_r.lower() == "iscritta":
+            gg_scad = (scad_espl - date.today()).days
+            if gg_scad <= 0:
+                badge_scad = " ❌SCADUTA"
+            elif gg_scad <= 3:
+                badge_scad = f" 🚨{gg_scad}gg"
+            elif gg_scad <= 7:
+                badge_scad = f" ⚠️{gg_scad}gg"
+
+        badge_stato = {
+            "iscritta": "🟡", "Iscritta": "🟡",
+            "esplicitata": "🔵", "Esplicitata": "🔵",
+            "accettata": "🟢", "Accettata": "🟢",
+            "rigettata": "🔴", "Rigettata": "🔴",
+            "In accordo bonario": "🟠",
+            "Arbitrato": "🟣",
+            "confermata": "🔵", "quantificata": "🟠",
+            "definita": "🟢", "respinta": "🔴",
         }.get(stato_r, "⚪")
 
-        titolo_exp = f"{badge_colore} {numero_r} — {stato_r.upper()} — {_formatta_importo(importo_r)}"
+        titolo_exp = f"{badge_stato} {rid} — {stato_r}{badge_scad} — {lav_r} — {_formatta_importo(importo_r)}"
 
         with st.expander(titolo_exp, expanded=False):
-            # Visualizzazione dati
+            # Cambio stato inline
+            tutti_stati = _STATI_RISERVA_WIZARD + [s for s in _STATI_RISERVA if s not in [x.lower() for x in _STATI_RISERVA_WIZARD]]
+            idx_stato_cur = next((i for i, s in enumerate(tutti_stati) if s.lower() == stato_r.lower()), 0)
+            nuovo_stato = st.selectbox(
+                "Stato",
+                tutti_stati,
+                index=idx_stato_cur,
+                key=f"reg_ris_stato_{rid}_{idx}",
+            )
+            if nuovo_stato != stato_r:
+                if st.button("💾 Aggiorna stato", key=f"reg_ris_upd_stato_{rid}_{idx}"):
+                    st.session_state.registri["riserve"][idx]["stato"] = nuovo_stato
+                    aggiungi_log("Riserva — cambio stato", f"{rid} → {nuovo_stato}", tab="Registri")
+                    salva_fn()
+                    st.rerun()
+
+            st.markdown("---")
+
+            # Dettagli wizard
             col_vis1, col_vis2 = st.columns(2)
             with col_vis1:
-                st.markdown(f"**Numero:** {numero_r}")
-                st.markdown(f"**Data iscrizione:** {riserva.get('data_iscrizione', '—')}")
-                st.markdown(f"**Data fatto generatore:** {riserva.get('data_fatto_generatore', '—')}")
-                st.markdown(f"**Stato:** {stato_r}")
+                st.markdown(f"**ID:** {rid}")
+                if riserva.get("tipo"):
+                    st.markdown(f"**Tipo:** {riserva['tipo']}")
+                if riserva.get("lavorazione"):
+                    st.markdown(f"**Lavorazione:** {riserva['lavorazione']}")
+                if riserva.get("data_evento"):
+                    st.markdown(f"**Data evento:** {riserva['data_evento']}")
+                if riserva.get("atto_contabile"):
+                    st.markdown(f"**Atto:** {riserva['atto_contabile']} — {riserva.get('numero_atto','—')}")
+                if riserva.get("data_atto"):
+                    st.markdown(f"**Data atto:** {riserva['data_atto']}")
+                # Legacy
+                if not riserva.get("tipo") and riserva.get("causale"):
+                    st.markdown(f"**Causale:** {riserva['causale']}")
             with col_vis2:
-                st.markdown(f"**Importo richiesto:** {_formatta_importo(importo_r)}")
-                st.markdown(f"**Importo riconosciuto:** {_formatta_importo(riserva.get('importo_riconosciuto', 0.0) or 0.0)}")
-            st.markdown(f"**Causale:** {riserva.get('causale', '—')}")
-            if riserva.get("note"):
-                st.markdown(f"**Note:** {riserva.get('note')}")
+                st.markdown(f"**Importo:** {_formatta_importo(importo_r)}")
+                if riserva.get("scadenza_esplicitazione"):
+                    scad_str = riserva["scadenza_esplicitazione"]
+                    scad_d = _parse_data_sicura(scad_str)
+                    if scad_d:
+                        gg_r = (scad_d - date.today()).days
+                        if gg_r <= 0:
+                            st.error(f"❌ Esplicitazione scaduta il {scad_str}")
+                        elif gg_r <= 3:
+                            st.error(f"🚨 Esplicitare entro {gg_r} giorni ({scad_str})")
+                        elif gg_r <= 7:
+                            st.warning(f"⚠️ Esplicitare entro {gg_r} giorni ({scad_str})")
+                        else:
+                            st.success(f"✅ Scadenza esplicitazione: {scad_str}")
+                if riserva.get("scadenza_risposta_dl"):
+                    st.markdown(f"⚠️ **Scadenza risposta DL:** {riserva['scadenza_risposta_dl']}")
+                if riserva.get("data_creazione"):
+                    st.markdown(f"**Creata il:** {riserva['data_creazione']}")
+
+            if riserva.get("causa"):
+                st.markdown(f"**Causa:** {riserva['causa']}")
+            if riserva.get("base_calcolo"):
+                with st.expander("Base di calcolo"):
+                    st.text(riserva["base_calcolo"])
+            if riserva.get("testo_riserva"):
+                with st.expander("📝 Testo formale riserva"):
+                    st.code(riserva["testo_riserva"], language=None)
+
+            # Pulsante PDF
+            col_pdf, col_del = st.columns([2, 1])
+            with col_pdf:
+                if st.button("📄 Genera PDF riserva", key=f"reg_ris_pdf_{rid}_{idx}"):
+                    pdf_bytes = _genera_pdf_riserva(riserva, csa_data)
+                    if pdf_bytes:
+                        st.download_button(
+                            "⬇️ Scarica PDF",
+                            data=pdf_bytes,
+                            file_name=f"riserva_{rid}.pdf",
+                            mime="application/pdf",
+                            key=f"reg_ris_pdf_dl_{rid}_{idx}",
+                        )
 
             # Documenti allegati
-            docs_esistenti = riserva.get("documenti", [])
+            docs_esistenti = list(riserva.get("file_allegati", []) or riserva.get("documenti", []))
             if docs_esistenti:
                 st.markdown("**Documenti allegati:**")
                 for nome_doc in docs_esistenti:
@@ -383,78 +795,32 @@ def _render_riserve(csa_data, details, importo_netto, results_dir, salva_fn):
                         key=f"reg_riserve_{rid}_doc_{nome_doc}",
                     )
 
-            # Upload nuovo documento
+            # Upload aggiuntivo
             nuovo_doc = st.file_uploader(
-                "Allega documento",
+                "Allega altro documento",
                 type=_TIPI_FILE,
                 key=f"reg_riserve_{rid}_upload",
             )
             if nuovo_doc is not None:
                 nome_salvato = _salva_file_allegato(nuovo_doc, "riserve", "r", rid, results_dir)
+                campo_docs = "file_allegati" if "file_allegati" in riserva else "documenti"
                 if nome_salvato and nome_salvato not in docs_esistenti:
-                    st.session_state.registri["riserve"][idx]["documenti"].append(nome_salvato)
-                    aggiungi_log("Documento allegato a riserva", f"Riserva {numero_r} — {nome_salvato}", tab="Registri")
-                    aggiungi_al_diario(f"Documento allegato a riserva {numero_r}: {nome_salvato}", "🔵 Adempimento Amministrativo")
+                    st.session_state.registri["riserve"][idx].setdefault(campo_docs, []).append(nome_salvato)
+                    if campo_docs == "file_allegati":
+                        st.session_state.registri["riserve"][idx].setdefault("documenti", []).append(nome_salvato)
+                    aggiungi_log("Documento allegato a riserva", f"{rid} — {nome_salvato}", tab="Registri")
                     salva_fn()
                     st.success(f"Documento '{nome_salvato}' allegato.")
                     st.rerun()
 
             st.markdown("---")
-
-            # Form modifica
-            with st.expander("✏️ Modifica riserva", expanded=False):
-                with st.form(f"form_edit_riserva_{rid}"):
-                    col_e1, col_e2 = st.columns(2)
-                    with col_e1:
-                        new_numero = st.text_input("Numero", value=numero_r, key=f"reg_riserve_{rid}_e_numero")
-                        data_is_cur = _parse_data_sicura(riserva.get("data_iscrizione", "")) or date.today()
-                        new_data_is = st.date_input("Data iscrizione", value=data_is_cur, key=f"reg_riserve_{rid}_e_data_is")
-                        data_fg_cur = _parse_data_sicura(riserva.get("data_fatto_generatore", "")) or date.today()
-                        new_data_fg = st.date_input("Data fatto generatore", value=data_fg_cur, key=f"reg_riserve_{rid}_e_data_fg")
-                        new_importo_rich = st.number_input(
-                            "Importo richiesto (€)",
-                            min_value=0.0,
-                            value=float(riserva.get("importo_richiesto") or 0.0),
-                            step=100.0,
-                            format="%.2f",
-                            key=f"reg_riserve_{rid}_e_imp_rich",
-                        )
-                    with col_e2:
-                        idx_stato = _STATI_RISERVA.index(stato_r) if stato_r in _STATI_RISERVA else 0
-                        new_stato = st.selectbox("Stato", _STATI_RISERVA, index=idx_stato, key=f"reg_riserve_{rid}_e_stato")
-                        new_importo_ric = st.number_input(
-                            "Importo riconosciuto (€)",
-                            min_value=0.0,
-                            value=float(riserva.get("importo_riconosciuto") or 0.0),
-                            step=100.0,
-                            format="%.2f",
-                            key=f"reg_riserve_{rid}_e_imp_ric",
-                        )
-                    new_causale = st.text_area("Causale", value=riserva.get("causale", ""), height=80, key=f"reg_riserve_{rid}_e_causale")
-                    new_note = st.text_area("Note", value=riserva.get("note", ""), height=60, key=f"reg_riserve_{rid}_e_note")
-                    if st.form_submit_button("💾 Salva modifiche"):
-                        st.session_state.registri["riserve"][idx].update({
-                            "numero": new_numero.strip(),
-                            "data_iscrizione": new_data_is.isoformat(),
-                            "data_fatto_generatore": new_data_fg.isoformat(),
-                            "causale": new_causale.strip(),
-                            "importo_richiesto": new_importo_rich,
-                            "importo_riconosciuto": new_importo_ric,
-                            "stato": new_stato,
-                            "note": new_note.strip(),
-                        })
-                        aggiungi_log("Riserva modificata", f"Riserva {new_numero} → stato: {new_stato}", tab="Registri")
-                        salva_fn()
-                        st.success("Riserva aggiornata.")
-                        st.rerun()
-
-            # Pulsante elimina
-            if st.button(f"🗑️ Elimina riserva {numero_r}", key=f"reg_riserve_{rid}_del"):
-                st.session_state.registri["riserve"].pop(idx)
-                aggiungi_log("Riserva eliminata", f"Riserva {numero_r}", tab="Registri")
-                salva_fn()
-                st.success(f"Riserva {numero_r} eliminata.")
-                st.rerun()
+            with col_del:
+                if st.button(f"🗑️ Elimina", key=f"reg_riserve_{rid}_del"):
+                    st.session_state.registri["riserve"].pop(idx)
+                    aggiungi_log("Riserva eliminata", f"{rid}", tab="Registri")
+                    salva_fn()
+                    st.success(f"Riserva {rid} eliminata.")
+                    st.rerun()
 
 
 # ===========================================================================

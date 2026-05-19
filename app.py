@@ -878,6 +878,27 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
         st.divider()
         st.progress(avanz_pct / 100, text=f"Avanzamento temporale: {avanz_pct:.1f}%")
 
+    # Alert riserve con scadenza imminente
+    _riserve_all = st.session_state.get("registri", {}).get("riserve", [])
+    _riserve_urgenti = []
+    for _r in _riserve_all:
+        if _r.get("stato", "").lower() == "iscritta" and _r.get("scadenza_esplicitazione"):
+            try:
+                _gg = (date.fromisoformat(_r["scadenza_esplicitazione"]) - date.today()).days
+                if _gg <= 7:
+                    _riserve_urgenti.append((_r.get("id", "—"), _r.get("lavorazione", _r.get("causale", "—")), _gg))
+            except (ValueError, TypeError):
+                pass
+    if _riserve_urgenti:
+        st.divider()
+        st.markdown("#### ⚠️ Riserve — Scadenze imminenti")
+        for _rid, _lav, _gg in _riserve_urgenti:
+            _lav_short = str(_lav)[:50]
+            if _gg <= 0:
+                st.error(f"❌ Riserva **{_rid}** ({_lav_short}): termine esplicitazione **SCADUTO**")
+            else:
+                st.warning(f"⚠️ Riserva **{_rid}** ({_lav_short}): esplicitare entro **{_gg} giorni**")
+
     # Riepilogo rapido
     st.divider()
     col_r1, col_r2, col_r3 = st.columns(3)
