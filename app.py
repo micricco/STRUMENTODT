@@ -1173,7 +1173,8 @@ def _render_documenti(csa_data: dict, api_key: str) -> None:
                         )
                         if up is not None:
                             path_corrente = doc.get("path", "")
-                            if up.name != pathlib.Path(path_corrente).name if path_corrente else True:
+                            gia_caricato = bool(path_corrente) and str(path_corrente).endswith(up.name)
+                            if not gia_caricato:
                                 RESULTS_ELAB.mkdir(parents=True, exist_ok=True)
                                 dest = RESULTS_ELAB / f"{cat_key}_{doc.get('codice', str(i))}_{up.name}"
                                 dest.write_bytes(up.getvalue())
