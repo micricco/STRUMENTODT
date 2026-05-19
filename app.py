@@ -796,9 +796,10 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
     with col2:
         st.metric("📅 Durata", f"{durata} gg" if durata else "—")
     with col3:
-        sal_label = sal_tipo.upper() if sal_tipo else "—"
+        sal_importo = csa_data.get("sal_importo_minimo_euro") or importo_netto
+        sal_importo_val = _parse_importo(sal_importo) if sal_importo else importo_netto
         sal_detail = f"ogni {sal_gg} gg" if sal_gg else ""
-        st.metric("📊 SAL", sal_label, delta=sal_detail, delta_color="off")
+        st.metric("📊 SAL", f"€ {sal_importo_val:,.0f}", delta=sal_detail, delta_color="off")
     with col4:
         if avanz_pct is not None:
             st.metric(
@@ -816,23 +817,27 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
     tot_sub = sum(float(s.get("importo", 0) or 0) for s in subs if s.get("tipo") == "subappalto")
     perc_sub = (tot_sub / importo_netto * 100) if importo_netto > 0 and tot_sub > 0 else None
 
+    # Subaffidamenti (Art. 122 D.Lgs. 36/2023)
+    tot_subaffid = sum(float(s.get("importo", 0) or 0) for s in subs if s.get("tipo") == "subaffidamento")
+    perc_subaffid = (tot_subaffid / importo_netto * 100) if importo_netto > 0 and tot_subaffid > 0 else None
+
     registri = st.session_state.get("registri", {})
-    n_riserve = len(registri.get("riserve", []))
-    nc_list = registri.get("non_conformita", [])
-    nc_aperte = len([x for x in nc_list if x.get("stato") == "aperta"])
     sal_contab = registri.get("contabilita_sal", [])
     n_sal_pagati = len([s for s in sal_contab if s.get("stato_pagamento") == "pagato"])
+    ordini_servizio = registri.get("ordini_servizio", [])
+    n_ordini = len(ordini_servizio)
 
-    if subs or n_riserve or nc_aperte or sal_contab:
+    if subs or sal_contab or ordini_servizio:
         st.divider()
         col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
             delta_sub = f"{perc_sub:.1f}% / 30% max" if perc_sub is not None else None
             st.metric("🏗️ Subappalti", f"€ {tot_sub:,.0f}", delta=delta_sub, delta_color="inverse" if (perc_sub or 0) > 30 else "off")
         with col_b:
-            st.metric("📋 Riserve iscritte", n_riserve)
+            delta_subaffid = f"{perc_subaffid:.1f}% / 10% max" if perc_subaffid is not None else None
+            st.metric("🏭 Subaffidamenti", f"€ {tot_subaffid:,.0f}", delta=delta_subaffid, delta_color="inverse" if (perc_subaffid or 0) > 10 else "off")
         with col_c:
-            st.metric("⚠️ NC aperte", nc_aperte, delta_color="inverse" if nc_aperte > 0 else "off")
+            st.metric("📋 Ordini di Servizio", n_ordini)
         with col_d:
             st.metric("💰 SAL contabilità pagati", n_sal_pagati)
 
@@ -1935,12 +1940,29 @@ def main() -> None:
         _render_penali(csa_data, details, importo_netto)
 
     with tab_operatori:
+        limite_subaffid_10 = importo_netto * 0.10
+        st.info(
+            f"🔒 **Limite Art. 122 D.Lgs. 36/2023**: Subaffidamenti max **€ {limite_subaffid_10:,.0f}** (10% importo netto)",
+            icon="⚠️",
+        )
+
         render_operatori_tab(
             csa_data=csa_data,
             importo_base=importo_netto,
             salva_fn=_salva_stato_cantiere,
             results_dir=RESULTS_DIR,
         )
+
+        # Verifica post-render
+        oe_check = st.session_state.get("operatori_economici", {})
+        subs_check = oe_check.get("subappaltatori", [])
+        tot_subaffid_check = sum(float(s.get("importo", 0) or 0) for s in subs_check if s.get("tipo") == "subaffidamento")
+        if tot_subaffid_check > limite_subaffid_10:
+            st.error(
+                f"❌ **SUPERA LIMITE**: Importo subaffidamenti € {tot_subaffid_check:,.0f}"
+                f" > limite € {limite_subaffid_10:,.0f}",
+                icon="🚨",
+            )
 
     with tab_registri:
         render_registri_tab(
