@@ -563,10 +563,10 @@ def _render_sidebar() -> str:
         st.divider()
         col_demo, col_reset = st.columns(2)
         with col_demo:
-            if st.button("🎮 Demo", use_container_width=True, help="Dati fittizi Bergamo BG"):
+            if st.button("🎮 Demo", use_container_width=True, help="Dati fittizi Bergamo BG", key="sb_demo_btn"):
                 _attiva_demo()
         with col_reset:
-            if st.button("🔄 Reset", use_container_width=True, help="Pulisci sessione"):
+            if st.button("🔄 Reset", use_container_width=True, help="Pulisci sessione", key="sb_reset_btn"):
                 _reset_sessione()
 
         # ── Upload PDF ─────────────────────────────────────────────────────────
@@ -606,7 +606,7 @@ def _render_sidebar() -> str:
                 f"Costo stimato: ~${costo_est:.3f}"
             )
             if api_key:
-                if st.button("🔍 Avvia analisi CSA", type="primary", use_container_width=True):
+                if st.button("🔍 Avvia analisi CSA", type="primary", use_container_width=True, key="sb_avvia_btn"):
                     _esegui_analisi(pdf_bytes, api_key)
             else:
                 st.warning("Inserisci la API Key per avviare l'analisi.")
@@ -649,7 +649,7 @@ def _render_sidebar() -> str:
                 importo_base = _parse_importo(csa_data.get("importo_lavori"))
                 importo_netto = importo_base * (1 - ribasso_pct / 100)
 
-                if st.button("Genera Excel multi-foglio", use_container_width=True):
+                if st.button("Genera Excel multi-foglio", use_container_width=True, key="sb_genera_excel_btn"):
                     try:
                         xls_bytes = _genera_excel(csa_data, importo_netto)
                         nome_xls = f"DTC_{_slug_nome(st.session_state._pdf_nome)}.xlsx"
@@ -659,6 +659,7 @@ def _render_sidebar() -> str:
                             file_name=nome_xls,
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True,
+                            key="sb_dl_excel_btn",
                         )
                         aggiungi_log("Export Excel", nome_xls, tab="Sidebar")
                     except Exception as e:
@@ -1678,298 +1679,6 @@ def _render_penali(csa_data: dict, details: dict, importo_netto: float) -> None:
                 )
                 st.caption(res_rev["note"])
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — MAPPA FORNITORI
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _render_mappa(csa_data: dict) -> None:
-    from modules.geocoder import geocode_site
-    from modules.supplier_search import CATEGORY_KEYWORDS, CATEGORY_QUERIES, search_suppliers
-    from modules.map_renderer import build_map
-    try:
-        from streamlit_folium import st_folium
-    except ImportError:
-        st.error("streamlit-folium non installato: pip install streamlit-folium")
-        return
-
-    st.header("🗺️ Mappa Fornitori")
-
-    # Geocoding cantiere
-    if "coords" not in st.session_state or st.session_state.coords is None:
-        with st.spinner("Geolocalizzazione cantiere in corso..."):
-            coords = geocode_site(csa_data)
-            st.session_state.coords = coords
-    else:
-        coords = st.session_state.coords
-
-    col_m1, col_m2 = st.columns([2, 1])
-
-    with col_m2:
-        st.subheader("Filtri ricerca")
-        raggio = st.slider("Raggio (km)", min_value=5, max_value=200, value=50, step=5, key="mappa_raggio")
-        categorie_disp = list(CATEGORY_QUERIES.keys())
-        cat_sel = st.multiselect(
-            "Categorie",
-            options=categorie_disp,
-            default=categorie_disp[:5],
-            key="mappa_categorie",
-        )
-        if st.button("🔍 Cerca fornitori", key="mappa_cerca"):
-            if not coords:
-                st.error("Impossibile geolocalizzare il cantiere. Inserisci manualmente le coordinate.")
-            else:
-                with st.spinner("Ricerca OSM in corso..."):
-                    df_supp = search_suppliers(
-                        lat=coords[0], lon=coords[1],
-                        radius_km=raggio,
-                        categories=cat_sel if cat_sel else None,
-                    )
-                    st.session_state.suppliers = df_supp
-                    aggiungi_log(
-                        "Ricerca fornitori",
-                        f"{len(df_supp)} risultati entro {raggio} km",
-                        tab="Mappa",
-                    )
-
-        st.divider()
-        st.subheader("Link ricerca esterna")
-        for cat in (cat_sel or categorie_disp[:5]):
-            kw = CATEGORY_KEYWORDS.get(cat, cat)
-            comune = csa_data.get("comune", "")
-            gmaps_url = f"https://www.google.com/maps/search/{kw.replace(' ', '+')}+{comune.replace(' ', '+')}"
-            pg_url = f"https://www.paginegialle.it/ricerca/{kw.replace(' ', '-')}/{comune.lower().replace(' ', '-')}"
-            st.markdown(f"**{cat}**")
-            st.markdown(f"[🗺️ Google Maps]({gmaps_url}) · [📒 Pagine Gialle]({pg_url})")
-
-    with col_m1:
-        if not coords:
-            st.warning("Coordinate cantiere non disponibili. Controlla comune e provincia nel CSA.")
-        else:
-            suppliers = st.session_state.get("suppliers", None)
-            if suppliers is not None and not suppliers.empty:
-                st.success(f"Trovati **{len(suppliers)}** fornitori")
-                m = build_map(coords[0], coords[1], suppliers, raggio)
-                st_folium(m, use_container_width=True, height=550)
-
-                with st.expander("📋 Lista fornitori"):
-                    display_cols = ["Categoria", "Nome", "Indirizzo", "Telefono", "Email", "Sito Web"]
-                    st.dataframe(
-                        suppliers[[c for c in display_cols if c in suppliers.columns]],
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-            elif suppliers is not None and suppliers.empty:
-                st.info("Nessun fornitore trovato nell'area. Usa i link di ricerca esterna.")
-                m = build_map(coords[0], coords[1], suppliers, raggio)
-                st_folium(m, use_container_width=True, height=550)
-            else:
-                m = build_map(coords[0], coords[1], pd.DataFrame(), raggio)
-                st_folium(m, use_container_width=True, height=400)
-                st.info("Premi 'Cerca fornitori' per avviare la ricerca.")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 7 — GUIDA
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _render_guida() -> None:
-    st.header("❓ Guida allo strumento DTC")
-
-    st.markdown("""
-### Introduzione
-Lo **Strumento DTC** è un assistente digitale per il Direttore Tecnico di Cantiere,
-progettato per la gestione di appalti pubblici italiani regolati da
-**D.Lgs. 36/2023** e **DM 49/2018**.
-
-Analizza il Capitolato Speciale d'Appalto (CSA) tramite AI (Claude Haiku) ed estrae
-automaticamente tutti i parametri contrattuali chiave.
-""")
-
-    with st.expander("🚀 Guida passo per passo", expanded=True):
-        st.markdown("""
-**1. Inserisci la Claude API Key** nella sidebar (o attiva la Demo senza key)
-
-**2. Carica il PDF del CSA** tramite l'uploader in sidebar
-- L'app estrae le pagine rilevanti (Smart Extract) e conta i token
-- Premi **"Avvia analisi"** per inviare il testo all'AI
-
-**3. Naviga tra i tab:**
-- **🏠 Dashboard** — panoramica metriche chiave e azioni rapide
-- **📋 Sintesi CSA** — tutti i dati estratti: importo, durata, SOA, SAL, penali
-- **✅ Checklist** — gestione attività con stati, referenti e upload documenti
-- **📄 Documenti** — repository elaborati progettuali + varianti + redazione lettere
-- **📅 Calendario** — timeline SAL, scadenze, sospensioni, varianti e proroghe
-- **💰 Penali & Revisione** — calcolo penali art.113-bis e revisione prezzi art.60
-- **🏢 Operatori** — gestione appaltatore, subappaltatori L1/L2, DURC, visure
-- **📚 Registri** — riserve, verbali, non conformità, ordini di servizio, SAL
-- **🗺️ Mappa** — ricerca fornitori e materiali nelle vicinanze del cantiere
-- **📋 Log** — cronologia completa di tutte le operazioni
-
-**4. Esporta** i dati tramite sidebar:
-- **Excel** (4 fogli: Sintesi, Scadenze, Checklist, Calendario)
-- **Email** scadenze critiche via SMTP (Gmail / Outlook)
-- **PDF calendario** dal tab Calendario
-""")
-
-    with st.expander("❓ FAQ"):
-        st.markdown("""
-**Quanto costa un'analisi CSA?**
-Circa € 0.02–0.05 per PDF standard (100-200 pagine), usando Claude Haiku.
-
-**I dati vengono salvati?**
-Sì, ogni analisi viene salvata in `results/<nome>.json` e può essere ricaricata
-senza rifare la chiamata API.
-
-**Come funziona la modalità Demo?**
-Carica dati fittizi di un cantiere stradale a Bergamo (€ 1.350.000, 180 giorni)
-senza richiedere API Key. Utile per esplorare le funzionalità.
-
-**Il ribasso d'asta dove si imposta?**
-Nella sidebar, sotto "⚙️ Parametri appalto". Il valore viene propagato a tutti
-i tab (Calendario, Penali, Revisione prezzi) e salvato nel JSON.
-
-**Posso aggiungere documenti non presenti nel CSA?**
-Sì, dal tab Documenti → sezione della categoria appropriata → "➕ Aggiungi documento".
-
-**Come funziona il calcolo SAL a importo?**
-L'app stima la data di ogni SAL tramite avanzamento lineare: il giorno del SAL n
-è calcolato come `round(n × soglia / importo × durata)`.
-
-**Perché il calendario mostra giorni diversi da quelli contrattuali?**
-Le sospensioni totali estendono la data fine lavori. Le parziali sono registrate
-ma non modificano la scadenza contrattuale.
-""")
-
-    with st.expander("⚖️ Note legali"):
-        st.markdown("""
-Questo strumento è un **ausilio operativo** per il DTC. Non sostituisce il parere
-di un legale né la verifica diretta del testo contrattuale.
-
-Le analisi AI possono contenere imprecisioni. Verifica sempre i dati estratti
-confrontandoli con il documento originale prima di prendere decisioni operative.
-
-**Riferimenti normativi principali:**
-- D.Lgs. 36/2023 — Codice dei contratti pubblici
-- DM 49/2018 — Linee guida DTC
-- Art. 113-bis — Penali
-- Art. 60 — Revisione prezzi
-- Art. 119 — Subappalto (limite 30%)
-- Art. 120 — Riserve (15 gg iscrizione, 15 gg quantificazione)
-""")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def main() -> None:
-    st.set_page_config(
-        page_title="Strumento DTC",
-        page_icon="🏗️",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
-
-    _init_session_state()
-
-    # Ribasso staging: consuma _ribasso_pendente prima dell'istanziazione del widget
-    if "_ribasso_pendente" in st.session_state:
-        pendente = st.session_state.pop("_ribasso_pendente")
-        st.session_state["ribasso_pct"] = float(pendente)
-
-    _render_sidebar()
-
-    csa_data = st.session_state.get("csa_data") or {}
-    details = csa_data  # alias per backward compatibility
-
-    ribasso_pct = float(st.session_state.get("ribasso_pct") or 0.0)
-    importo_base = _parse_importo(csa_data.get("importo_lavori", "0"))
-    importo_netto = importo_base * (1 - ribasso_pct / 100)
-
-    # Varianti e proroghe: somma giorni aggiuntivi per durata effettiva
-    vp_list = st.session_state.get("_varianti_proroghe", [])
-    giorni_varianti = sum(int(v.get("giorni", 0) or 0) for v in vp_list)
-    durata_base = int(csa_data.get("durata_lavori_giorni") or 0)
-    durata_eff = durata_base + giorni_varianti
-
-    if not csa_data:
-        st.title("🏗️ Strumento DTC")
-        st.info(
-            "Carica un CSA (PDF) dalla sidebar per iniziare l'analisi, "
-            "oppure attiva la **Modalità Demo** per esplorare le funzionalità."
-        )
-        _render_guida()
-        return
-
-    tabs = st.tabs([
-        "🏠 Dashboard",
-        "📋 Sintesi CSA",
-        "✅ Checklist",
-        "📄 Documenti",
-        "📅 Calendario",
-        "💰 Penali & Revisione",
-        "🏢 Operatori",
-        "📚 Registri",
-        "🗺️ Mappa Fornitori",
-        "📊 Pianificazione",
-        "📋 Log Attività",
-        "❓ Guida",
-    ])
-
-    api_key = st.session_state.get("_api_key", "")
-
-    with tabs[0]:
-        _render_dashboard(csa_data, details, importo_base, importo_netto, ribasso_pct, durata_eff)
-    with tabs[1]:
-        _render_sintesi(csa_data, details, importo_netto)
-    with tabs[2]:
-        _render_checklist(csa_data)
-    with tabs[3]:
-        _render_documenti(csa_data, details, importo_netto, api_key)
-    with tabs[4]:
-        _render_calendario(csa_data, details, importo_netto, durata_eff, vp_list)
-    with tabs[5]:
-        _render_penali(csa_data, details, importo_netto)
-    with tabs[6]:
-        render_operatori_tab(
-            csa_data=csa_data,
-            importo_base=importo_netto,
-            salva_fn=_salva_stato_cantiere,
-            results_dir=RESULTS_DIR,
-        )
-    with tabs[7]:
-        render_registri_tab(
-            csa_data=csa_data,
-            details=details,
-            importo_netto=importo_netto,
-            results_dir=RESULTS_DIR,
-            salva_fn=_salva_stato_cantiere,
-        )
-        _render_contabilita_sal(
-            csa_data=csa_data,
-            details=details,
-            importo_netto=importo_netto,
-            results_dir=RESULTS_DIR,
-            salva_fn=_salva_stato_cantiere,
-        )
-    with tabs[8]:
-        _render_mappa(csa_data)
-    with tabs[9]:
-        render_pianificazione_tab(
-            csa_data=csa_data,
-            api_key=api_key,
-            salva_fn=_salva_stato_cantiere,
-            results_dir=RESULTS_DIR,
-        )
-    with tabs[10]:
-        render_log_tab(csa_data=csa_data, salva_fn=_salva_stato_cantiere)
-    with tabs[11]:
-        _render_guida()
-
-
-if __name__ == "__main__":
-    main()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — MAPPA FORNITORI
