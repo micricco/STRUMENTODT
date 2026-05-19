@@ -13,6 +13,8 @@ upload documenti allegati. Tutte le variazioni vengono persistite tramite
 salva_fn() e registrate nel log attività.
 """
 
+import io
+import time
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime
@@ -1115,23 +1117,42 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
                 key="acc_stato",
             )
         with col4:
-            st.markdown("**Allegati (foto, certificati)**")
-            st.file_uploader(
-                "Carica documentazione",
-                type=["pdf", "jpg", "png", "docx"],
-                key="acc_file",
-                accept_multiple_files=True,
-            )
+            is_cam = st.checkbox("🌿 Prodotto CAM (D.M. 23/06/2022)", key="acc_is_cam")
+
+        st.markdown("---")
+        st.markdown("**📁 Documenti aziendali**")
+        col_up1, col_up2, col_up3 = st.columns(3)
+        with col_up1:
+            carta_intestata = st.file_uploader("Carta intestata", type=["jpg", "png", "pdf"], key="acc_carta_intestata")
+        with col_up2:
+            timbro = st.file_uploader("Timbro", type=["jpg", "png"], key="acc_timbro")
+        with col_up3:
+            firma = st.file_uploader("Firma", type=["jpg", "png"], key="acc_firma")
+
+        st.markdown("**📎 Certificati prodotto**")
+        cert_links = st.text_area("Link certificati (uno per riga)", key="acc_cert_links", placeholder="https://produttore.it/certificato-ce.pdf", height=80)
+        cert_files = st.file_uploader("PDF certificati", type=["pdf"], key="acc_cert_files", accept_multiple_files=True)
 
         if st.button("💾 Salva Scheda", key="btn_salva_scheda_acc"):
+            scheda_id = f"sch_{int(time.time() * 1000)}"
             nuova_scheda = {
+                "id": scheda_id,
                 "data": str(data_acc),
                 "materiale": materiale,
                 "fornitore": fornitore,
                 "quantita": quantita,
                 "note": note,
                 "stato": stato,
+                "is_cam": is_cam,
+                "cert_links": [l.strip() for l in cert_links.splitlines() if l.strip()],
+                "cert_files_nomi": [f.name for f in cert_files] if cert_files else [],
                 "file_allegati": [],
+            }
+            # Bytes in session_state separato — NON nel JSON salvato su disco
+            st.session_state[f"_scheda_media_{scheda_id}"] = {
+                "carta_intestata_bytes": carta_intestata.read() if carta_intestata else None,
+                "timbro_bytes": timbro.read() if timbro else None,
+                "firma_bytes": firma.read() if firma else None,
             }
             schede.append(nuova_scheda)
             registri["schede_accettazione"] = schede
@@ -1155,12 +1176,41 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
                     st.markdown(f"**{stato_emoji} {scheda.get('materiale', '—')}**")
                     st.caption(f"Fornitore: {scheda.get('fornitore', '—')}")
                     st.caption(f"Quantità: {scheda.get('quantita', '—')}")
+                    if scheda.get("is_cam"):
+                        st.caption("🌿 Prodotto CAM")
                 with col_b:
                     st.caption(f"📅 {scheda.get('data', '—')}")
                     nota = scheda.get("note", "—") or "—"
                     st.caption(f"Note: {nota[:100]}")
+                    if scheda.get("cert_links"):
+                        st.caption(f"🔗 {len(scheda['cert_links'])} certificati")
                 with col_c:
+                    if st.button("📄 Crea Scheda", key=f"crea_scheda_{idx}"):
+                        st.session_state[f"show_pdf_{idx}"] = True
+
+                    if st.session_state.get(f"show_pdf_{idx}"):
+                        scheda_id = scheda.get("id")
+                        media = st.session_state.get(f"_scheda_media_{scheda_id}", {})
+                        scheda_con_media = {**scheda, **media}
+                        pdf_bytes = _genera_pdf_scheda_accettazione(scheda_con_media, csa_data)
+                        if pdf_bytes:
+                            nome_file = (
+                                f"Scheda_Accettazione_"
+                                f"{scheda.get('materiale', '').replace(' ', '_')}_"
+                                f"{scheda.get('data', '')}.pdf"
+                            )
+                            st.download_button(
+                                label="⬇️ Scarica PDF",
+                                data=pdf_bytes,
+                                file_name=nome_file,
+                                mime="application/pdf",
+                                key=f"download_scheda_{idx}",
+                            )
+
                     if st.button("🗑️", key=f"del_scheda_{idx}", help="Elimina scheda"):
+                        scheda_id = scheda.get("id")
+                        st.session_state.pop(f"_scheda_media_{scheda_id}", None)
+                        st.session_state.pop(f"show_pdf_{idx}", None)
                         schede.pop(idx)
                         registri["schede_accettazione"] = schede
                         st.session_state.registri = registri
@@ -1168,6 +1218,134 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
                         st.rerun()
     else:
         st.info("Nessuna scheda di accettazione registrata.")
+
+
+def _genera_pdf_scheda_accettazione(scheda: dict, csa_data: dict) -> bytes | None:
+    try:
+        from fpdf import FPDF
+        from PIL import Image
+
+        FONT_REG  = str(pathlib.Path("fonts") / "DejaVuSans.ttf")
+        FONT_BOLD = str(pathlib.Path("fonts") / "DejaVuSans-Bold.ttf")
+
+        def _img_to_buf(raw_bytes: bytes) -> io.BytesIO:
+            img = Image.open(io.BytesIO(raw_bytes)).convert("RGBA")
+            bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            bg.paste(img, mask=img.split()[3] if img.mode == "RGBA" else None)
+            buf = io.BytesIO()
+            bg.convert("RGB").save(buf, format="PNG")
+            buf.seek(0)
+            return buf
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.add_font("DejaVu", "",  FONT_REG,  uni=True)
+        pdf.add_font("DejaVu", "B", FONT_BOLD, uni=True)
+
+        # HEADER — carta intestata
+        carta_bytes = scheda.get("carta_intestata_bytes")
+        if carta_bytes:
+            pdf.image(_img_to_buf(carta_bytes), x=10, y=10, w=190, h=35)
+            pdf.ln(42)
+        else:
+            pdf.set_font("DejaVu", "B", 11)
+            pdf.cell(0, 8, csa_data.get("stazione_appaltante", "Impresa Appaltatrice"), ln=True, align="C")
+            pdf.ln(4)
+
+        # TITOLO
+        pdf.set_font("DejaVu", "B", 13)
+        pdf.set_fill_color(30, 80, 160)
+        pdf.set_text_color(255, 255, 255)
+        pdf.cell(0, 9, "SCHEDA DI ACCETTAZIONE MATERIALI", ln=True, align="C", fill=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(5)
+
+        # BADGE CAM
+        if scheda.get("is_cam"):
+            pdf.set_font("DejaVu", "B", 10)
+            pdf.set_fill_color(0, 150, 80)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(0, 7, "PRODOTTO CAM — Criteri Ambientali Minimi (D.M. 23/06/2022)", ln=True, align="C", fill=True)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(4)
+
+        def _sezione(titolo: str) -> None:
+            pdf.set_font("DejaVu", "B", 10)
+            pdf.set_fill_color(220, 228, 245)
+            pdf.cell(0, 7, titolo, ln=True, fill=True)
+
+        def _riga(label: str, valore: str) -> None:
+            pdf.set_font("DejaVu", "B", 9)
+            pdf.cell(55, 6, f"  {label}:", border=0)
+            pdf.set_font("DejaVu", "", 9)
+            pdf.cell(0, 6, str(valore or "—"), ln=True)
+
+        # DATI APPALTO
+        _sezione("DATI APPALTO")
+        _riga("Oggetto lavori",      csa_data.get("tipo_lavori", "—"))
+        _riga("Stazione Appaltante", csa_data.get("stazione_appaltante", "—"))
+        _riga("Comune",              f"{csa_data.get('comune', '—')} ({csa_data.get('provincia', '—')})")
+        _riga("CIG",                 csa_data.get("cig", "—"))
+        _riga("CUP",                 csa_data.get("cup", "—"))
+        pdf.ln(4)
+
+        # DATI MATERIALE
+        _sezione("DATI MATERIALE")
+        _riga("Materiale / Descrizione", scheda.get("materiale", "—"))
+        _riga("Fornitore",               scheda.get("fornitore", "—"))
+        _riga("Quantità",                scheda.get("quantita", "—"))
+        _riga("Data accettazione",       scheda.get("data", "—"))
+        _riga("Esito",                   scheda.get("stato", "—"))
+        pdf.ln(4)
+
+        # NOTE
+        if scheda.get("note"):
+            _sezione("NOTE")
+            pdf.set_font("DejaVu", "", 9)
+            pdf.multi_cell(0, 6, scheda["note"])
+            pdf.ln(4)
+
+        # CERTIFICATI
+        cert_links = scheda.get("cert_links", [])
+        cert_files_nomi = scheda.get("cert_files_nomi", [])
+        if cert_links or cert_files_nomi:
+            _sezione("CERTIFICATI E DOCUMENTAZIONE PRODOTTO")
+            pdf.set_font("DejaVu", "", 9)
+            for link in cert_links:
+                pdf.cell(0, 6, f"  Link: {link}", ln=True)
+            for nome in cert_files_nomi:
+                pdf.cell(0, 6, f"  Allegato: {nome}", ln=True)
+            pdf.ln(4)
+
+        # APPROVAZIONE — timbro + firma affiancati
+        pdf.ln(8)
+        _sezione("APPROVAZIONE")
+        pdf.ln(4)
+        y_footer = pdf.get_y()
+
+        timbro_bytes = scheda.get("timbro_bytes")
+        firma_bytes  = scheda.get("firma_bytes")
+        if timbro_bytes:
+            pdf.image(_img_to_buf(timbro_bytes), x=20, y=y_footer, w=70, h=35)
+        if firma_bytes:
+            pdf.image(_img_to_buf(firma_bytes), x=120, y=y_footer, w=70, h=35)
+
+        pdf.set_y(y_footer + 38)
+        pdf.set_font("DejaVu", "", 8)
+        pdf.cell(95, 5, "Timbro Impresa Appaltatrice", align="C")
+        pdf.cell(95, 5, "Firma Responsabile", align="C", ln=True)
+        pdf.ln(12)
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.cell(0, 6, "Visto — Il Direttore dei Lavori", ln=True, align="R")
+        pdf.set_font("DejaVu", "", 8)
+        pdf.cell(0, 5, "Data: _______________", ln=True, align="R")
+        pdf.cell(0, 5, "Firma: _______________", ln=True, align="R")
+
+        return bytes(pdf.output())
+
+    except Exception as e:
+        st.error(f"Errore generazione PDF scheda: {e}")
+        return None
 
 
 # ===========================================================================
