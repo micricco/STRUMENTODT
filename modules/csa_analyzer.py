@@ -75,7 +75,29 @@ EXTRACTION_PROMPT = """Sei un esperto di appalti pubblici italiani (D.Lgs. 36/20
       "categoria": "grafico",
       "descrizione": "descrizione sintetica dell'elaborato"
     }
-  ]
+  ],
+  "subaffidamenti": {
+    "importo_totale": "importo totale subaffidamenti (€) come stringa o numero, null se non presente nel CSA",
+    "numero_subaffidatari": 0,
+    "lista_subaffidatari": [
+      {
+        "nome": "nome subaffidatario",
+        "importo": "importo subaffidamento come stringa o numero",
+        "descrizione_lavori": "descrizione lavori affidati"
+      }
+    ]
+  },
+  "ordini_servizio": {
+    "numero_totale": 0,
+    "lista_ordini": [
+      {
+        "data": "YYYY-MM-DD",
+        "numero": "OS-001/2026",
+        "descrizione": "descrizione breve del lavoro",
+        "importo": "importo in euro come stringa o null se non indicato"
+      }
+    ]
+  }
 }
 
 ISTRUZIONI SPECIFICHE:
@@ -130,6 +152,10 @@ prezzario_anno: anno di riferimento del prezzario come stringa di 4 cifre (es. "
 
 elaborati: elenco degli elaborati progettuali citati nel CSA. Cerca nell'indice degli elaborati, nel frontespizio o negli allegati. categorie: "tecnico" (relazioni, computo metrico, elenco prezzi, PSC, cronoprogramma), "grafico" (tavole, planimetrie, sezioni, particolari costruttivi), "amministrativo" (schema contratto, capitolato, disciplinare). Se il CSA non elenca elaborati restituisci lista vuota [].
 
+subaffidamenti: cerca nel CSA i subaffidamenti (sub-subappalti, Art. 122 D.Lgs. 36/2023). Se il CSA menziona subaffidatari o cottimisti: estrai importo_totale e lista_subaffidatari. Se non menzionati: importo_totale = null, numero_subaffidatari = 0, lista_subaffidatari = [].
+
+ordini_servizio: cerca nel testo le espressioni "Ordine di Servizio", "OS n.", "verbale OS", "ordine di servizio n.". Estrai: data emissione (YYYY-MM-DD), numero OS (es. OS-001/2026), breve descrizione, importo se indicato. Se non emessi o non citati nel CSA: numero_totale = 0, lista_ordini = [].
+
 Restituisci SOLO il JSON valido, senza testo aggiuntivo, senza markdown, senza backtick."""
 
 
@@ -149,6 +175,34 @@ def stima_token_pdf(pdf_bytes: bytes) -> int:
         return max(len(testo) // 4, len(pdf_bytes) // 6)
     except Exception:
         return len(pdf_bytes) // 6
+
+
+def _parse_num_simple(v) -> float:
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace("€", "").replace(" ", "").replace("\xa0", "")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _post_processa_csa_data(data: dict) -> dict:
+    subaffidamenti_data = data.get("subaffidamenti") or {}
+    data["subaffidamenti_importo"] = _parse_num_simple(subaffidamenti_data.get("importo_totale"))
+    data["subaffidamenti_numero"] = int(subaffidamenti_data.get("numero_subaffidatari") or 0)
+
+    ordini_data = data.get("ordini_servizio") or {}
+    data["ordini_servizio_numero"] = int(ordini_data.get("numero_totale") or 0)
+    data["ordini_servizio_lista"] = ordini_data.get("lista_ordini") or []
+
+    return data
 
 
 def _ripara_json_troncato(raw: str) -> dict:
@@ -220,9 +274,9 @@ def analyze_csa(testo: str, api_key: str) -> dict:
         raw = raw.strip()
 
     if message.stop_reason == "max_tokens":
-        return _ripara_json_troncato(raw)
+        return _post_processa_csa_data(_ripara_json_troncato(raw))
 
-    return json.loads(raw)
+    return _post_processa_csa_data(json.loads(raw))
 
 
 def estrai_pagine_pdf(pdf_bytes: bytes, da: int, a: int) -> bytes:
@@ -263,6 +317,36 @@ def unisci_analisi(d1: dict, d2: dict) -> dict:
     # Max 5 categorie SOA
     merged["categorie_soa"] = merged.get("categorie_soa", [])[:5]
     return merged
+
+
+def valida_subaffidamenti(csa_data: dict) -> dict:
+    """Valida subaffidamenti rispetto al limite del 10% (Art. 122 D.Lgs. 36/2023)."""
+    importo_netto = _parse_num_simple(csa_data.get("importo_netto")) or _parse_num_simple(csa_data.get("importo_lavori"))
+    importo_subaffid = _parse_num_simple(csa_data.get("subaffidamenti_importo"))
+    limite_10 = importo_netto * 0.10
+
+    if importo_netto <= 0:
+        return {
+            "is_valid": True,
+            "importo": importo_subaffid,
+            "limite": 0.0,
+            "superato": 0.0,
+            "percentuale": 0.0,
+            "messaggio": "⚠️ Importo netto non disponibile",
+        }
+
+    return {
+        "is_valid": importo_subaffid <= limite_10,
+        "importo": importo_subaffid,
+        "limite": limite_10,
+        "superato": max(0.0, importo_subaffid - limite_10),
+        "percentuale": importo_subaffid / importo_netto * 100,
+        "messaggio": (
+            f"✅ Entro limite ({importo_subaffid / importo_netto * 100:.1f}%)"
+            if importo_subaffid <= limite_10
+            else f"❌ SUPERA limite di € {importo_subaffid - limite_10:,.0f}"
+        ),
+    }
 
 
 # DEPRECATO — sostituito da Smart Extract
@@ -315,7 +399,9 @@ _SCHEMA_CONSOLIDATION = """{
   "checklist_accettazione_materiali": [{"attivita":"...","termine_giorni":null,"priorita":"media"}],
   "checklist_sicurezza": [{"attivita":"...","termine_giorni":null,"priorita":"alta"}],
   "checklist_assicurative": [{"attivita":"...","termine_giorni":10,"priorita":"alta"}],
-  "elaborati": [{"codice":"TAV.01","titolo":"...","categoria":"grafico","descrizione":"..."}]
+  "elaborati": [{"codice":"TAV.01","titolo":"...","categoria":"grafico","descrizione":"..."}],
+  "subaffidamenti": {"importo_totale": null, "numero_subaffidatari": 0, "lista_subaffidatari": []},
+  "ordini_servizio": {"numero_totale": 0, "lista_ordini": []}
 }"""
 
 CONSOLIDATION_PROMPT_TEMPLATE = (

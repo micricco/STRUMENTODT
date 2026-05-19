@@ -839,6 +839,35 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
         if oe:
             render_durc_semaphore(oe)
 
+    # Fila 3 — Subaffidamenti & Ordini di Servizio (da estrazione CSA)
+    subaffid_importo = float(csa_data.get("subaffidamenti_importo", 0) or 0)
+    subaffid_numero = int(csa_data.get("subaffidamenti_numero", 0) or 0)
+    os_numero = int(csa_data.get("ordini_servizio_numero", 0) or 0)
+
+    if subaffid_importo > 0 or subaffid_numero > 0 or os_numero > 0:
+        st.divider()
+        col_e, col_f, col_g, _ = st.columns(4)
+        subaffid_limit = importo_netto * 0.10 if importo_netto > 0 else 0.0
+        warn_sa = importo_netto > 0 and subaffid_importo > subaffid_limit > 0
+        delta_sa = f"{subaffid_importo / importo_netto * 100:.1f}% (limite 10%)" if importo_netto > 0 else None
+        with col_e:
+            st.metric(
+                "🔀 Subaffidamenti",
+                f"€ {subaffid_importo:,.0f}",
+                delta=delta_sa,
+                delta_color="inverse" if warn_sa else "off",
+                help="Art. 122 D.Lgs. 36/2023 — limite 10% importo subappalto",
+            )
+        with col_f:
+            st.metric("👥 Subaffidatari", subaffid_numero)
+        with col_g:
+            st.metric("📝 Ordini di Servizio", os_numero, help="Ordini di servizio estratti dal CSA")
+        if warn_sa:
+            st.warning(
+                f"⚠️ Subaffidamenti (€ {subaffid_importo:,.0f}) superano il limite del 10%"
+                f" (max € {subaffid_limit:,.0f})"
+            )
+
     # Avanzamento barra
     if avanz_pct is not None:
         st.divider()

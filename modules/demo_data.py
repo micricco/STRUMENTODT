@@ -153,6 +153,70 @@ DEMO_CSA_DATA = {
         {"attivita": "Aggiornare le polizze in caso di variante che aumenti l'importo contrattuale", "termine_giorni": None, "priorita": "media"},
         {"attivita": "Comunicare immediatamente alla compagnia assicurativa qualsiasi sinistro o danneggiamento", "termine_giorni": None, "priorita": "alta"},
     ],
+    # ── Subaffidamenti & Ordini di Servizio ───────────────────────────────────
+    "subaffidamenti": {
+        "importo_totale": "15000",
+        "numero_subaffidatari": 2,
+        "lista_subaffidatari": [
+            {
+                "nome": "Ditta XYZ Scavi s.r.l.",
+                "importo": "10000",
+                "descrizione_lavori": "Scavi e movimentazione terra",
+            },
+            {
+                "nome": "Azienda ABC Impianti s.n.c.",
+                "importo": "5000",
+                "descrizione_lavori": "Installazione tubazioni",
+            },
+        ],
+    },
+    "ordini_servizio": {
+        "numero_totale": 3,
+        "lista_ordini": [
+            {
+                "data": "2026-05-01",
+                "numero": "OS-001/2026",
+                "descrizione": "Realizzazione scavi preliminari",
+                "importo": "5000",
+            },
+            {
+                "data": "2026-05-10",
+                "numero": "OS-002/2026",
+                "descrizione": "Posa tubazioni acque bianche",
+                "importo": "3500",
+            },
+            {
+                "data": "2026-05-15",
+                "numero": "OS-003/2026",
+                "descrizione": "Controllo e collaudo parziale",
+                "importo": "0",
+            },
+        ],
+    },
+    # Campi flat derivati (pre-calcolati per la demo)
+    "subaffidamenti_importo": 15000.0,
+    "subaffidamenti_numero": 2,
+    "ordini_servizio_numero": 3,
+    "ordini_servizio_lista": [
+        {
+            "data": "2026-05-01",
+            "numero": "OS-001/2026",
+            "descrizione": "Realizzazione scavi preliminari",
+            "importo": "5000",
+        },
+        {
+            "data": "2026-05-10",
+            "numero": "OS-002/2026",
+            "descrizione": "Posa tubazioni acque bianche",
+            "importo": "3500",
+        },
+        {
+            "data": "2026-05-15",
+            "numero": "OS-003/2026",
+            "descrizione": "Controllo e collaudo parziale",
+            "importo": "0",
+        },
+    ],
 }
 
 DEMO_COORDS = (45.6983, 9.6773)  # Bergamo, Via Roma (centro)
