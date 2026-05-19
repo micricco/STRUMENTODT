@@ -1,11 +1,7 @@
 __pycache__/
 *.pyc
 *.pyo
-csa/
-results/
-fonts/
-API.txt
-*.pdf
-*.xlsx
-*.xls
 .env
+API.txt
+results/
+*.pdf
