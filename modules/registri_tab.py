@@ -64,9 +64,10 @@ def _init_registri() -> None:
             "non_conformita": [],
             "ordini_servizio": [],
             "contabilita_sal": [],
+            "schede_accettazione": [],
         }
     # Assicura che tutte le chiavi siano presenti (backward-compat)
-    for chiave in ("riserve", "verbali", "non_conformita", "ordini_servizio", "contabilita_sal"):
+    for chiave in ("riserve", "verbali", "non_conformita", "ordini_servizio", "contabilita_sal", "schede_accettazione"):
         if chiave not in st.session_state.registri:
             st.session_state.registri[chiave] = []
 
@@ -150,51 +151,55 @@ def _parse_data_sicura(valore: str) -> date | None:
 def render_registri_tab(
     csa_data: dict,
     details: dict,
-    importo_netto: float,
     results_dir: pathlib.Path,
     salva_fn,
+    importo_netto: float = 0.0,
+    include_verbali: bool = True,
+    include_contabilita: bool = True,
+    include_schede_accettazione: bool = False,
 ) -> None:
-    """
-    Renderizza il tab 'Registri Cantiere' con 5 sotto-tab:
-      - Riserve
-      - Verbali
-      - Non Conformità
-      - Ordini di Servizio
-      - Contabilità SAL
-
-    Parametri:
-        csa_data      – dict estratto da analyze_csa()
-        details       – alias di csa_data (compatibilità)
-        importo_netto – importo contrattuale netto dopo ribasso
-        results_dir   – pathlib.Path alla cartella results/
-        salva_fn      – callable senza argomenti, chiama il salvataggio
-    """
     _init_registri()
 
-    st.header("🗂️ Registri Cantiere")
+    st.header("🗂️ Registri di Cantiere")
     st.caption(
-        "Gestione registri ufficiali ai sensi del D.Lgs. 36/2023 e DM 49/2018: "
-        "Riserve, Verbali, Non Conformità e Ordini di Servizio."
+        "Gestione registri ufficiali ai sensi del D.Lgs. 36/2023 e DM 49/2018."
     )
 
-    tab_riserve, tab_verbali, tab_nc, tab_os = st.tabs([
-        "📋 Riserve",
-        "📝 Verbali",
-        "⚠️ Non Conformità",
-        "📨 Ordini di Servizio",
-    ])
+    # Build tab list dynamically
+    tab_names = ["📋 Riserve"]
+    if include_verbali:
+        tab_names.append("📝 Verbali")
+    tab_names.extend(["⚠️ Non Conformità", "📨 Ordini di Servizio"])
+    if include_schede_accettazione:
+        tab_names.append("✅ Schede Accettazione")
 
-    with tab_riserve:
+    tabs = st.tabs(tab_names)
+    idx = 0
+
+    with tabs[idx]:
         _render_riserve(csa_data, details, importo_netto, results_dir, salva_fn)
+    idx += 1
 
-    with tab_verbali:
-        _render_verbali(csa_data, details, results_dir, salva_fn)
+    if include_verbali:
+        with tabs[idx]:
+            _render_verbali(csa_data, details, results_dir, salva_fn)
+        idx += 1
 
-    with tab_nc:
+    with tabs[idx]:
         _render_non_conformita(csa_data, details, results_dir, salva_fn)
+    idx += 1
 
-    with tab_os:
+    with tabs[idx]:
         _render_ordini_servizio(csa_data, details, results_dir, salva_fn)
+    idx += 1
+
+    if include_schede_accettazione:
+        with tabs[idx]:
+            _render_schede_accettazione(csa_data, salva_fn, results_dir)
+
+    if include_contabilita:
+        st.divider()
+        _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva_fn)
 
 
 # ===========================================================================
@@ -1083,7 +1088,90 @@ def _render_ordini_servizio(csa_data, details, results_dir, salva_fn):
 
 
 # ===========================================================================
-# SEZIONE E — CONTABILITÀ SAL
+# SEZIONE E — SCHEDE DI ACCETTAZIONE MATERIALI
+# ===========================================================================
+
+def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
+    _init_registri()
+    registri = st.session_state.registri
+    schede: list = registri.get("schede_accettazione", [])
+
+    with st.expander("➕ Nuova Scheda di Accettazione", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            data_acc = st.date_input("Data accettazione", value=date.today(), key="acc_data")
+            materiale = st.text_input("Materiale / Descrizione", key="acc_materiale", placeholder="Es: Cemento, Acciaio, Laterizi…")
+        with col2:
+            fornitore = st.text_input("Fornitore", key="acc_fornitore", placeholder="Nome azienda")
+            quantita = st.text_input("Quantità", key="acc_quantita", placeholder="Es: 100 sacchi, 5 tonnellate")
+
+        note = st.text_area("Note / Difetti rilevati", key="acc_note", height=80)
+
+        col3, col4 = st.columns(2)
+        with col3:
+            stato = st.selectbox(
+                "Stato accettazione",
+                ["Accettato", "Accettato con difetti", "Rifiutato"],
+                key="acc_stato",
+            )
+        with col4:
+            st.markdown("**Allegati (foto, certificati)**")
+            st.file_uploader(
+                "Carica documentazione",
+                type=["pdf", "jpg", "png", "docx"],
+                key="acc_file",
+                accept_multiple_files=True,
+            )
+
+        if st.button("💾 Salva Scheda", key="btn_salva_scheda_acc"):
+            nuova_scheda = {
+                "data": str(data_acc),
+                "materiale": materiale,
+                "fornitore": fornitore,
+                "quantita": quantita,
+                "note": note,
+                "stato": stato,
+                "file_allegati": [],
+            }
+            schede.append(nuova_scheda)
+            registri["schede_accettazione"] = schede
+            st.session_state.registri = registri
+            salva_fn()
+            aggiungi_log("Scheda accettazione registrata", f"{materiale} — {stato}", tab="Registri")
+            st.success(f"✅ Scheda '{materiale}' registrata")
+            st.rerun()
+
+    if schede:
+        st.markdown("### Schede registrate")
+        for idx, scheda in enumerate(schede):
+            with st.container(border=True):
+                col_a, col_b, col_c = st.columns([2, 2, 1])
+                with col_a:
+                    stato_emoji = {
+                        "Accettato": "✅",
+                        "Accettato con difetti": "⚠️",
+                        "Rifiutato": "❌",
+                    }.get(scheda.get("stato", ""), "—")
+                    st.markdown(f"**{stato_emoji} {scheda.get('materiale', '—')}**")
+                    st.caption(f"Fornitore: {scheda.get('fornitore', '—')}")
+                    st.caption(f"Quantità: {scheda.get('quantita', '—')}")
+                with col_b:
+                    st.caption(f"📅 {scheda.get('data', '—')}")
+                    nota = scheda.get("note", "—") or "—"
+                    st.caption(f"Note: {nota[:100]}")
+                with col_c:
+                    if st.button("🗑️", key=f"del_scheda_{idx}", help="Elimina scheda"):
+                        schede.pop(idx)
+                        registri["schede_accettazione"] = schede
+                        st.session_state.registri = registri
+                        salva_fn()
+                        st.rerun()
+    else:
+        st.info("Nessuna scheda di accettazione registrata.")
+
+
+# ===========================================================================
+# SEZIONE F — CONTABILITÀ SAL
 # ===========================================================================
 
 def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva_fn):

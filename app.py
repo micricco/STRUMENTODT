@@ -46,7 +46,6 @@ _FONT_BOLD = str(FONTS_DIR / "DejaVuSans-Bold.ttf")
 
 _CHECKLIST_CATEGORIE = {
     "Prime settimane": "checklist_prime_settimane",
-    "Accettazione Materiali": "checklist_accettazione_materiali",
     "Sicurezza": "checklist_sicurezza",
     "Assicurative": "checklist_assicurative",
 }
@@ -687,8 +686,9 @@ def _render_sidebar() -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _attiva_demo() -> None:
-    from modules.demo_data import DEMO_CSA_DATA, DEMO_COORDS, DEMO_SUPPLIERS, DEMO_DOCUMENTS
+    from modules.demo_data import DEMO_CSA_DATA, DEMO_COORDS, DEMO_SUPPLIERS, DEMO_DOCUMENTS, DEMO_REGISTRI
     st.session_state.csa_data = DEMO_CSA_DATA.copy()
+    st.session_state.registri = {k: list(v) for k, v in DEMO_REGISTRI.items()}
     st.session_state._demo_active = True
     st.session_state._file_id = "__demo__"
     st.session_state._pdf_nome = "demo_bergamo"
@@ -1905,19 +1905,19 @@ def main() -> None:
 
     # Tabs
     tab_dashboard, tab_sintesi, tab_checklist, tab_documenti, tab_calendario, \
-    tab_penali, tab_operatori, tab_registri, tab_mappa, tab_pianificazione, \
+    tab_sal_penali, tab_operatori, tab_registri, tab_mappa, tab_pianificazione, \
     tab_log, tab_guida = st.tabs([
         "🏠 Dashboard",
         "📋 Sintesi CSA",
         "✅ Checklist",
         "📄 Documenti",
         "📅 Calendario",
-        "💰 Penali",
+        "💰 SAL e Penali",
         "🏢 Operatori",
-        "🗂️ Registri",
-        "🗺️ Mappa",
-        "📊 Pianificazione",
-        "📋 Log",
+        "🗂️ Registri di Cantiere",
+        "🗺️ Mappa Fornitori",
+        "📋 Pianificazione",
+        "📚 Log Attività",
         "❓ Guida",
     ])
 
@@ -1936,7 +1936,21 @@ def main() -> None:
     with tab_calendario:
         _render_calendario(csa_data, details, importo_netto)
 
-    with tab_penali:
+    with tab_sal_penali:
+        st.header("💰 SAL e Penali")
+
+        st.subheader("📊 Contabilità SAL")
+        _render_contabilita_sal(
+            csa_data=csa_data,
+            details=details,
+            importo_netto=importo_netto,
+            results_dir=RESULTS_DIR,
+            salva_fn=_salva_stato_cantiere,
+        )
+
+        st.divider()
+
+        st.subheader("📉 Penali e Revisione Prezzi")
         _render_penali(csa_data, details, importo_netto)
 
     with tab_operatori:
@@ -1968,12 +1982,13 @@ def main() -> None:
         render_registri_tab(
             csa_data=csa_data,
             details=details,
-            importo_netto=importo_netto,
             results_dir=RESULTS_DIR,
             salva_fn=_salva_stato_cantiere,
+            importo_netto=importo_netto,
+            include_verbali=False,
+            include_contabilita=False,
+            include_schede_accettazione=True,
         )
-        st.divider()
-        _render_contabilita_sal(csa_data, details, importo_netto, RESULTS_DIR, _salva_stato_cantiere)
 
     with tab_mappa:
         _render_mappa(csa_data)

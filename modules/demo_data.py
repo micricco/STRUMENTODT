@@ -511,3 +511,31 @@ Il Legale Rappresentante
 ____________________________
 [Nome Cognome]""",
 }
+
+DEMO_REGISTRI = {
+    "riserve": [],
+    "verbali": [],
+    "non_conformita": [],
+    "ordini_servizio": [],
+    "contabilita_sal": [],
+    "schede_accettazione": [
+        {
+            "data": "2026-05-05",
+            "materiale": "Cemento Portland 325",
+            "fornitore": "Fornitori Costruzioni S.p.A.",
+            "quantita": "50 sacchi",
+            "note": "Conforme alle specifiche",
+            "stato": "Accettato",
+            "file_allegati": [],
+        },
+        {
+            "data": "2026-05-10",
+            "materiale": "Acciaio B450C φ16",
+            "fornitore": "Acciaierie Italiane",
+            "quantita": "10 tonnellate",
+            "note": "Difetto: 2 rotoli con pieghe",
+            "stato": "Accettato con difetti",
+            "file_allegati": [],
+        },
+    ],
+}
