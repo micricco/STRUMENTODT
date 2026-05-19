@@ -1162,6 +1162,32 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
             st.success(f"✅ Scheda '{materiale}' registrata")
             st.rerun()
 
+        if st.button("📄 Crea Scheda di Accettazione", key="btn_crea_scheda_form", help="Genera PDF dai dati inseriti senza salvare"):
+            scheda_temp = {
+                "data": str(data_acc),
+                "materiale": materiale,
+                "fornitore": fornitore,
+                "quantita": quantita,
+                "note": note,
+                "stato": stato,
+                "is_cam": is_cam,
+                "cert_links": [l.strip() for l in cert_links.splitlines() if l.strip()],
+                "cert_files_nomi": [f.name for f in cert_files] if cert_files else [],
+                "carta_intestata_bytes": carta_intestata.read() if carta_intestata else None,
+                "timbro_bytes": timbro.read() if timbro else None,
+                "firma_bytes": firma.read() if firma else None,
+            }
+            pdf_bytes = _genera_pdf_scheda_accettazione(scheda_temp, csa_data)
+            if pdf_bytes:
+                nome_file = f"Scheda_Accettazione_{materiale.replace(' ', '_')}_{data_acc}.pdf"
+                st.download_button(
+                    label="⬇️ Scarica PDF",
+                    data=pdf_bytes,
+                    file_name=nome_file,
+                    mime="application/pdf",
+                    key="download_scheda_form",
+                )
+
     if schede:
         st.markdown("### Schede registrate")
         for idx, scheda in enumerate(schede):
