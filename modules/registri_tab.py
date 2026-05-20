@@ -1464,6 +1464,42 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
     registri = st.session_state.registri
     schede: list = registri.get("schede_accettazione", [])
 
+    # ── SEZIONE DOCUMENTI AZIENDALI — caricati una volta, validi per tutte le schede ──
+    has_carta = bool(st.session_state.get("dtc_carta_intestata_bytes"))
+    has_timbro = bool(st.session_state.get("dtc_timbro_bytes"))
+    has_firma = bool(st.session_state.get("dtc_firma_bytes"))
+    with st.expander("🏢 Documenti Aziendali (carta intestata, timbro, firma)", expanded=not has_carta):
+        st.caption("Caricali una volta sola — verranno usati automaticamente in tutte le schede")
+        col1_az, col2_az, col3_az = st.columns(3)
+        with col1_az:
+            if has_carta:
+                st.success(f"✅ Carta intestata: {st.session_state.get('dtc_carta_intestata_nome', 'caricata')}")
+            else:
+                st.warning("⚠️ Nessuna carta intestata")
+            up_carta = st.file_uploader("Carta intestata", type=["jpg", "png", "pdf"], key="up_carta_glob")
+            if up_carta:
+                st.session_state["dtc_carta_intestata_bytes"] = up_carta.read()
+                st.session_state["dtc_carta_intestata_nome"] = up_carta.name
+                st.success("✅ Salvata")
+        with col2_az:
+            if has_timbro:
+                st.success("✅ Timbro caricato")
+            else:
+                st.warning("⚠️ Nessun timbro")
+            up_timbro = st.file_uploader("Timbro", type=["jpg", "png"], key="up_timbro_glob")
+            if up_timbro:
+                st.session_state["dtc_timbro_bytes"] = up_timbro.read()
+                st.success("✅ Salvato")
+        with col3_az:
+            if has_firma:
+                st.success("✅ Firma caricata")
+            else:
+                st.warning("⚠️ Nessuna firma")
+            up_firma = st.file_uploader("Firma", type=["jpg", "png"], key="up_firma_glob")
+            if up_firma:
+                st.session_state["dtc_firma_bytes"] = up_firma.read()
+                st.success("✅ Salvata")
+
     with st.expander("➕ Nuova Scheda di Accettazione", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -1485,24 +1521,18 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
         with col4:
             is_cam = st.checkbox("🌿 Prodotto CAM (D.M. 23/06/2022)", key="acc_is_cam")
 
-        st.markdown("---")
-        st.markdown("**📁 Documenti aziendali**")
-        col_up1, col_up2, col_up3 = st.columns(3)
-        with col_up1:
-            carta_intestata = st.file_uploader("Carta intestata", type=["jpg", "png", "pdf"], key="acc_carta_intestata")
-        with col_up2:
-            timbro = st.file_uploader("Timbro", type=["jpg", "png"], key="acc_timbro")
-        with col_up3:
-            firma = st.file_uploader("Firma", type=["jpg", "png"], key="acc_firma")
-
         st.markdown("**📎 Certificati prodotto**")
         cert_links = st.text_area("Link certificati (uno per riga)", key="acc_cert_links", placeholder="https://produttore.it/certificato-ce.pdf", height=80)
         cert_files = st.file_uploader("PDF certificati", type=["pdf"], key="acc_cert_files", accept_multiple_files=True)
 
         if st.button("💾 Salva Scheda", key="btn_salva_scheda_acc"):
             scheda_id = f"sch_{int(time.time() * 1000)}"
+            numero_progressivo = len(schede) + 1
             nuova_scheda = {
                 "id": scheda_id,
+                "numero": numero_progressivo,
+                "anno": date.today().year,
+                "numero_label": f"n. {numero_progressivo} del {date.today().strftime('%d/%m/%Y')}",
                 "data": str(data_acc),
                 "materiale": materiale,
                 "fornitore": fornitore,
@@ -1516,20 +1546,23 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
             }
             # Bytes in session_state separato — NON nel JSON salvato su disco
             st.session_state[f"_scheda_media_{scheda_id}"] = {
-                "carta_intestata_bytes": carta_intestata.read() if carta_intestata else None,
-                "timbro_bytes": timbro.read() if timbro else None,
-                "firma_bytes": firma.read() if firma else None,
+                "carta_intestata_bytes": st.session_state.get("dtc_carta_intestata_bytes"),
+                "timbro_bytes": st.session_state.get("dtc_timbro_bytes"),
+                "firma_bytes": st.session_state.get("dtc_firma_bytes"),
             }
             schede.append(nuova_scheda)
             registri["schede_accettazione"] = schede
             st.session_state.registri = registri
             salva_fn()
             aggiungi_log("Scheda accettazione registrata", f"{materiale} — {stato}", tab="Registri")
-            st.success(f"✅ Scheda '{materiale}' registrata")
+            st.success(f"✅ Scheda '{materiale}' registrata ({nuova_scheda['numero_label']})")
             st.rerun()
 
         if st.button("📄 Crea Scheda di Accettazione", key="btn_crea_scheda_form", help="Genera PDF dai dati inseriti senza salvare"):
+            numero_temp = len(schede) + 1
             scheda_temp = {
+                "numero": numero_temp,
+                "numero_label": f"n. {numero_temp} del {date.today().strftime('%d/%m/%Y')}",
                 "data": str(data_acc),
                 "materiale": materiale,
                 "fornitore": fornitore,
@@ -1539,9 +1572,6 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
                 "is_cam": is_cam,
                 "cert_links": [l.strip() for l in cert_links.splitlines() if l.strip()],
                 "cert_files_nomi": [f.name for f in cert_files] if cert_files else [],
-                "carta_intestata_bytes": carta_intestata.read() if carta_intestata else None,
-                "timbro_bytes": timbro.read() if timbro else None,
-                "firma_bytes": firma.read() if firma else None,
             }
             pdf_bytes = _genera_pdf_scheda_accettazione(scheda_temp, csa_data)
             if pdf_bytes:
@@ -1565,7 +1595,8 @@ def _render_schede_accettazione(csa_data: dict, salva_fn, results_dir) -> None:
                         "Accettato con difetti": "⚠️",
                         "Rifiutato": "❌",
                     }.get(scheda.get("stato", ""), "—")
-                    st.markdown(f"**{stato_emoji} {scheda.get('materiale', '—')}**")
+                    num_label = scheda.get("numero_label", f"n. {idx + 1}")
+                    st.markdown(f"**{stato_emoji} [{num_label}] {scheda.get('materiale', '—')}**")
                     st.caption(f"Fornitore: {scheda.get('fornitore', '—')}")
                     st.caption(f"Quantità: {scheda.get('quantita', '—')}")
                     if scheda.get("is_cam"):
@@ -1634,14 +1665,26 @@ def _genera_pdf_scheda_accettazione(scheda: dict, csa_data: dict) -> bytes | Non
         pdf.add_font("DejaVu", "",  FONT_REG,  uni=True)
         pdf.add_font("DejaVu", "B", FONT_BOLD, uni=True)
 
-        # HEADER — carta intestata
-        carta_bytes = scheda.get("carta_intestata_bytes")
+        # HEADER — carta intestata (prima di qualsiasi ln/cell)
+        carta_bytes = (
+            scheda.get("carta_intestata_bytes")
+            or st.session_state.get("dtc_carta_intestata_bytes")
+        )
         if carta_bytes:
-            pdf.image(_img_to_buf(carta_bytes), x=10, y=10, w=190, h=35)
-            pdf.ln(42)
+            try:
+                img_c = Image.open(io.BytesIO(carta_bytes)).convert("RGB")
+                buf_c = io.BytesIO()
+                img_c.save(buf_c, format="PNG")
+                buf_c.seek(0)
+                pdf.image(buf_c, x=10, y=8, w=190, h=40)
+                pdf.set_y(52)
+            except Exception:
+                pdf.set_font("DejaVu", "B", 11)
+                pdf.cell(0, 8, "[ Carta intestata ]", ln=True, align="C")
         else:
             pdf.set_font("DejaVu", "B", 11)
-            pdf.cell(0, 8, csa_data.get("stazione_appaltante", "Impresa Appaltatrice"), ln=True, align="C")
+            ditta = csa_data.get("appaltatore", csa_data.get("stazione_appaltante", "Impresa Appaltatrice"))
+            pdf.cell(0, 8, ditta, ln=True, align="C")
             pdf.ln(4)
 
         # TITOLO
@@ -1650,6 +1693,20 @@ def _genera_pdf_scheda_accettazione(scheda: dict, csa_data: dict) -> bytes | Non
         pdf.set_text_color(255, 255, 255)
         pdf.cell(0, 9, "SCHEDA DI ACCETTAZIONE MATERIALI", ln=True, align="C", fill=True)
         pdf.set_text_color(0, 0, 0)
+
+        # NUMERAZIONE CRONOLOGICA
+        num_label = scheda.get("numero_label", "")
+        if not num_label and scheda.get("numero"):
+            data_str = scheda.get("data", "")
+            try:
+                from datetime import datetime as _dt
+                data_fmt = _dt.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+            except Exception:
+                data_fmt = data_str
+            num_label = f"n. {scheda['numero']} del {data_fmt}"
+        if num_label:
+            pdf.set_font("DejaVu", "B", 11)
+            pdf.cell(0, 7, num_label, ln=True, align="C")
         pdf.ln(5)
 
         # BADGE CAM
@@ -1711,24 +1768,42 @@ def _genera_pdf_scheda_accettazione(scheda: dict, csa_data: dict) -> bytes | Non
 
         # APPROVAZIONE — timbro + firma affiancati
         pdf.ln(8)
+        y_before_app = pdf.get_y()
+        if y_before_app > 240:
+            pdf.add_page()
         _sezione("APPROVAZIONE")
         pdf.ln(4)
         y_footer = pdf.get_y()
 
-        timbro_bytes = scheda.get("timbro_bytes")
-        firma_bytes  = scheda.get("firma_bytes")
+        timbro_bytes = (
+            scheda.get("timbro_bytes")
+            or st.session_state.get("dtc_timbro_bytes")
+        )
+        firma_bytes = (
+            scheda.get("firma_bytes")
+            or st.session_state.get("dtc_firma_bytes")
+        )
         if timbro_bytes:
-            pdf.image(_img_to_buf(timbro_bytes), x=20, y=y_footer, w=70, h=35)
+            try:
+                pdf.image(_img_to_buf(timbro_bytes), x=15, y=y_footer, w=75, h=35)
+            except Exception:
+                pass
         if firma_bytes:
-            pdf.image(_img_to_buf(firma_bytes), x=120, y=y_footer, w=70, h=35)
+            try:
+                pdf.image(_img_to_buf(firma_bytes), x=115, y=y_footer, w=75, h=35)
+            except Exception:
+                pass
 
         pdf.set_y(y_footer + 38)
         pdf.set_font("DejaVu", "", 8)
         pdf.cell(95, 5, "Timbro Impresa Appaltatrice", align="C")
         pdf.cell(95, 5, "Firma Responsabile", align="C", ln=True)
-        pdf.ln(12)
+        pdf.ln(14)
+        pdf.set_draw_color(100, 100, 100)
+        pdf.line(110, pdf.get_y(), 195, pdf.get_y())
+        pdf.ln(2)
         pdf.set_font("DejaVu", "B", 9)
-        pdf.cell(0, 6, "Visto — Il Direttore dei Lavori", ln=True, align="R")
+        pdf.cell(0, 5, "Il Direttore dei Lavori", ln=True, align="R")
         pdf.set_font("DejaVu", "", 8)
         pdf.cell(0, 5, "Data: _______________", ln=True, align="R")
         pdf.cell(0, 5, "Firma: _______________", ln=True, align="R")
