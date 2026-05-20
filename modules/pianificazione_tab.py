@@ -253,6 +253,289 @@ def _associa_fasi_voci(fasi: list[dict], voci: list[dict], api_key: str) -> dict
         return {}
 
 
+# ── Generazione Excel Cruscotto per Fase ─────────────────────────────────────
+
+def _genera_excel_cruscotto(pianificazione_data: dict, csa_data: dict) -> bytes | None:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        fasi = pianificazione_data.get("fasi", [])
+        voci_cme_all = pianificazione_data.get("voci_cme", [])
+        voci_sic_all = pianificazione_data.get("voci_sicurezza", [])
+        associazioni = pianificazione_data.get("associazioni", {})
+        n_cme = len(voci_cme_all)
+
+        # voce_index → nome_fase
+        voce_to_fase_nome: dict[int, str] = {}
+        for nome_fase_k, ids in associazioni.items():
+            for vid in ids:
+                try:
+                    voce_to_fase_nome[int(vid)] = nome_fase_k
+                except (ValueError, TypeError):
+                    pass
+
+        nome_to_fi = {
+            str(f.get("nome", f"Fase {fi+1}")): fi
+            for fi, f in enumerate(fasi)
+        }
+
+        fase_cme: dict[int, list] = {fi: [] for fi in range(len(fasi))}
+        fase_sic: dict[int, list] = {fi: [] for fi in range(len(fasi))}
+
+        for i, v in enumerate(voci_cme_all):
+            fi = nome_to_fi.get(voce_to_fase_nome.get(i, ""))
+            if fi is not None:
+                fase_cme[fi].append(v)
+
+        for i, v in enumerate(voci_sic_all):
+            fi = nome_to_fi.get(voce_to_fase_nome.get(n_cme + i, ""))
+            if fi is not None:
+                fase_sic[fi].append(v)
+
+        # ── Workbook ──────────────────────────────────────────────────────────
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Cruscotto per Fase"
+
+        # Stili
+        fill_blu_scuro = PatternFill("solid", fgColor="00467F")
+        fill_blu_medio = PatternFill("solid", fgColor="1E5099")
+        fill_rosso     = PatternFill("solid", fgColor="FFC8C8")
+        fill_grigio_ch = PatternFill("solid", fgColor="DCDCDC")
+        fill_grigio_lt = PatternFill("solid", fgColor="F0F0F0")
+        fill_giallo    = PatternFill("solid", fgColor="FFFFB4")
+        fill_oro       = PatternFill("solid", fgColor="FFD700")
+        fill_bianco    = PatternFill("solid", fgColor="FFFFFF")
+        fill_alt       = PatternFill("solid", fgColor="F8F8F8")
+
+        font_hdr  = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+        font_fase = Font(name="Arial", size=9,  bold=True, color="FFFFFF")
+        font_bold = Font(name="Arial", size=9,  bold=True)
+        font_it   = Font(name="Arial", size=9,  italic=True)
+        font_norm = Font(name="Arial", size=9)
+        font_tot  = Font(name="Arial", size=9,  bold=True)
+        font_gen  = Font(name="Arial", size=10, bold=True)
+
+        thin   = Side(style="thin", color="CCCCCC")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        al_c = Alignment(horizontal="center", vertical="center")
+        al_l = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+        al_r = Alignment(horizontal="right",  vertical="center")
+
+        fmt_euro = '#,##0.00'
+
+        # Larghezze colonne: A=5 B=55 C=8 D=8 E=7 F=7 G=7 H=12 I=14 J=14
+        for ci, w in enumerate([5, 55, 8, 8, 7, 7, 7, 12, 14, 14], 1):
+            ws.column_dimensions[get_column_letter(ci)].width = w
+
+        def _apply(cell, fill=None, font=None, align=None, fmt=None):
+            if fill:  cell.fill = fill
+            if font:  cell.font = font
+            if align: cell.alignment = align
+            if fmt:   cell.number_format = fmt
+            cell.border = border
+
+        # ── Header colonne (riga 1) ───────────────────────────────────────────
+        headers = [
+            "N°", "DESIGNAZIONE DEI LAVORI", "Q.TÀ", "U.M.",
+            "S.INI", "S.FIN", "GG", "P.U. (€)", "IMP. CME (€)", "IMP. SIC. (€)",
+        ]
+        ws.row_dimensions[1].height = 22
+        for ci, h in enumerate(headers, 1):
+            _apply(ws.cell(row=1, column=ci, value=h),
+                   fill=fill_blu_medio, font=font_hdr, align=al_c)
+        ws.freeze_panes = "A2"
+
+        row = 2
+        fase_tot_rows_cme: list[int] = []  # riga totale fase con valore col I
+        fase_tot_rows_sic: list[int] = []  # riga totale fase con valore col J
+
+        for fi, fase in enumerate(fasi):
+            nome_fase = str(fase.get("nome", f"Fase {fi+1}"))
+            s_ini = fase.get("settimana_inizio", "")
+            s_fin = fase.get("settimana_fine", "")
+            gg    = fase.get("durata_giorni", "")
+            cme_voci = fase_cme.get(fi, [])
+            sic_voci = fase_sic.get(fi, [])
+
+            # ── Header fase ──────────────────────────────────────────────────
+            ws.row_dimensions[row].height = 18
+            ws.merge_cells(f"A{row}:H{row}")
+            _apply(ws.cell(row=row, column=1,
+                           value=f"FASE {fi+1} – {nome_fase.upper()}"),
+                   fill=fill_blu_scuro, font=font_fase, align=al_l)
+            _apply(ws.cell(row=row, column=9,
+                           value=f"Sett.{s_ini}÷{s_fin}"),
+                   fill=fill_blu_scuro, font=font_fase, align=al_c)
+            _apply(ws.cell(row=row, column=10,
+                           value=f"{gg} gg"),
+                   fill=fill_blu_scuro, font=font_fase, align=al_c)
+            row += 1
+
+            # ── Voci sicurezza ────────────────────────────────────────────────
+            sic_range_start = row
+            if sic_voci:
+                ws.merge_cells(f"A{row}:J{row}")
+                _apply(ws.cell(row=row, column=1,
+                               value="   🔴  ONERI PER LA SICUREZZA – NON SOGGETTI A RIBASSO"),
+                       fill=fill_rosso, font=font_bold, align=al_l)
+                for c in range(2, 11):
+                    ws.cell(row=row, column=c).fill = fill_rosso
+                    ws.cell(row=row, column=c).border = border
+                row += 1
+
+                for j, v in enumerate(sic_voci):
+                    fill = fill_bianco if j % 2 == 0 else fill_alt
+                    ws.row_dimensions[row].height = 28
+                    vals = [
+                        j + 1,
+                        v.get("descrizione", ""),
+                        v.get("quantita", ""),
+                        v.get("unita_misura", ""),
+                        s_ini, s_fin, gg,
+                        float(v.get("prezzo_unitario") or 0),
+                        None,
+                        float(v.get("importo_totale") or 0),
+                    ]
+                    for ci, val in enumerate(vals, 1):
+                        cell = ws.cell(row=row, column=ci, value=val)
+                        _apply(cell, fill=fill, font=font_norm,
+                               align=(al_c if ci in (1,3,4,5,6,7) else
+                                      al_r if ci in (8,9,10) else al_l),
+                               fmt=(fmt_euro if ci in (8,10) and val else None))
+                    row += 1
+            sic_range_end = row - 1
+
+            # ── Voci CME raggruppate per categoria ───────────────────────────
+            cme_range_start = row
+            if cme_voci:
+                ws.merge_cells(f"A{row}:J{row}")
+                _apply(ws.cell(row=row, column=1,
+                               value="   ▸  LAVORI A MISURA – COMPUTO METRICO ESTIMATIVO"),
+                       fill=fill_grigio_ch, font=font_bold, align=al_l)
+                for c in range(2, 11):
+                    ws.cell(row=row, column=c).fill = fill_grigio_ch
+                    ws.cell(row=row, column=c).border = border
+                row += 1
+
+                categorie: dict[str, list] = {}
+                for v in cme_voci:
+                    cat = str(v.get("categoria") or "LAVORAZIONI").upper()
+                    categorie.setdefault(cat, []).append(v)
+
+                n_prog = 1
+                for cat_name, cat_voci in categorie.items():
+                    ws.merge_cells(f"A{row}:J{row}")
+                    _apply(ws.cell(row=row, column=1,
+                                   value=f"      › {cat_name}"),
+                           fill=fill_grigio_lt, font=font_it, align=al_l)
+                    for c in range(2, 11):
+                        ws.cell(row=row, column=c).fill = fill_grigio_lt
+                        ws.cell(row=row, column=c).border = border
+                    row += 1
+
+                    for j, v in enumerate(cat_voci):
+                        fill = fill_bianco if j % 2 == 0 else fill_alt
+                        ws.row_dimensions[row].height = 28
+                        vals = [
+                            n_prog,
+                            v.get("descrizione", ""),
+                            v.get("quantita", ""),
+                            v.get("unita_misura", ""),
+                            s_ini, s_fin, gg,
+                            float(v.get("prezzo_unitario") or 0),
+                            float(v.get("importo_totale") or 0),
+                            None,
+                        ]
+                        for ci, val in enumerate(vals, 1):
+                            cell = ws.cell(row=row, column=ci, value=val)
+                            _apply(cell, fill=fill, font=font_norm,
+                                   align=(al_c if ci in (1,3,4,5,6,7) else
+                                          al_r if ci in (8,9,10) else al_l),
+                                   fmt=(fmt_euro if ci in (8,9) and val else None))
+                        row += 1
+                        n_prog += 1
+            cme_range_end = row - 1
+
+            # ── Riga totale fase ──────────────────────────────────────────────
+            ws.merge_cells(f"A{row}:H{row}")
+            _apply(ws.cell(row=row, column=1,
+                           value=f"TOTALE FASE {fi+1} – {nome_fase.upper()}"),
+                   fill=fill_giallo, font=font_tot, align=al_l)
+
+            cme_formula = (
+                f"=SUM(I{cme_range_start}:I{cme_range_end})"
+                if cme_voci else 0
+            )
+            sic_formula = (
+                f"=SUM(J{sic_range_start}:J{sic_range_end})"
+                if sic_voci else 0
+            )
+
+            cell_ci = ws.cell(row=row, column=9, value=cme_formula)
+            _apply(cell_ci, fill=fill_giallo, font=font_tot, align=al_r,
+                   fmt=fmt_euro)
+            cell_cj = ws.cell(row=row, column=10, value=sic_formula)
+            _apply(cell_cj, fill=fill_giallo, font=font_tot, align=al_r,
+                   fmt=fmt_euro)
+
+            if cme_voci:
+                fase_tot_rows_cme.append(row)
+            if sic_voci:
+                fase_tot_rows_sic.append(row)
+            row += 1
+
+        # ── Totali generali ───────────────────────────────────────────────────
+        row += 1
+
+        def _riga_totale(r, label, col_i_val, col_j_val, fill, font):
+            ws.merge_cells(f"A{r}:H{r}")
+            _apply(ws.cell(row=r, column=1, value=label),
+                   fill=fill, font=font, align=al_l)
+            ci_cell = ws.cell(row=r, column=9, value=col_i_val)
+            _apply(ci_cell, fill=fill, font=font, align=al_r, fmt=fmt_euro)
+            cj_cell = ws.cell(row=r, column=10, value=col_j_val)
+            _apply(cj_cell, fill=fill, font=font, align=al_r, fmt=fmt_euro)
+            for c in range(1, 11):
+                ws.cell(row=r, column=c).fill = fill
+                ws.cell(row=r, column=c).border = border
+
+        tot_lavori_formula = (
+            "=SUM(" + ",".join(f"I{r}" for r in fase_tot_rows_cme) + ")"
+            if fase_tot_rows_cme else 0
+        )
+        tot_sic_formula = (
+            "=SUM(" + ",".join(f"J{r}" for r in fase_tot_rows_sic) + ")"
+            if fase_tot_rows_sic else 0
+        )
+
+        _riga_totale(row, "TOTALE GENERALE LAVORI",
+                     tot_lavori_formula, "", fill_giallo, font_tot)
+        tot_lavori_row = row
+        row += 1
+
+        _riga_totale(row, "TOTALE GENERALE SICUREZZA",
+                     "", tot_sic_formula, fill_giallo, font_tot)
+        tot_sic_row = row
+        row += 1
+
+        totale_complessivo = f"=I{tot_lavori_row}+J{tot_sic_row}"
+        _riga_totale(row, "TOTALE COMPLESSIVO",
+                     totale_complessivo, "", fill_oro, font_gen)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf.getvalue()
+
+    except Exception as e:
+        st.error(f"Errore generazione Excel Cruscotto: {e}")
+        return None
+
+
 # ── Render principale ─────────────────────────────────────────────────────────
 
 def render_pianificazione_tab(
@@ -566,45 +849,75 @@ def render_pianificazione_tab(
     # ════════════════════════════════════════════════════════════════════════
     st.divider()
 
-    if st.button("📥 Genera Excel Pianificazione", type="primary", key="pian_genera_excel"):
-        # Costruisce mappa voce_index → nome_fase
-        voce_to_fase: dict[int, str] = {}
-        for nome_fase, ids in piano.get("associazioni", {}).items():
-            for vid in ids:
-                try:
-                    voce_to_fase[int(vid)] = nome_fase
-                except (ValueError, TypeError):
-                    pass
+    col_btn1, col_btn2 = st.columns(2)
 
-        # Aggiunge fase_associata alle voci CME
-        voci_cme_ex = []
-        for i, v in enumerate(voci_cme_curr):
-            v2 = dict(v)
-            v2["fase_associata"] = voce_to_fase.get(i, "")
-            voci_cme_ex.append(v2)
+    with col_btn1:
+        if st.button("📥 Genera Excel Pianificazione", type="primary", key="pian_genera_excel"):
+            # Costruisce mappa voce_index → nome_fase
+            voce_to_fase: dict[int, str] = {}
+            for nome_fase, ids in piano.get("associazioni", {}).items():
+                for vid in ids:
+                    try:
+                        voce_to_fase[int(vid)] = nome_fase
+                    except (ValueError, TypeError):
+                        pass
 
-        # Aggiunge fase_associata e non_ribassabile alle voci sicurezza
-        voci_sic_ex = []
-        for i, v in enumerate(voci_sic_curr):
-            v2 = dict(v)
-            v2["fase_associata"] = voce_to_fase.get(n_cme_curr + i, "")
-            v2["non_ribassabile"] = True
-            voci_sic_ex.append(v2)
+            # Aggiunge fase_associata alle voci CME
+            voci_cme_ex = []
+            for i, v in enumerate(voci_cme_curr):
+                v2 = dict(v)
+                v2["fase_associata"] = voce_to_fase.get(i, "")
+                voci_cme_ex.append(v2)
 
-        try:
-            buf = genera_excel_pianificazione(
-                fasi_curr, voci_cme_ex, voci_sic_ex, nome_progetto
+            # Aggiunge fase_associata e non_ribassabile alle voci sicurezza
+            voci_sic_ex = []
+            for i, v in enumerate(voci_sic_curr):
+                v2 = dict(v)
+                v2["fase_associata"] = voce_to_fase.get(n_cme_curr + i, "")
+                v2["non_ribassabile"] = True
+                voci_sic_ex.append(v2)
+
+            try:
+                buf = genera_excel_pianificazione(
+                    fasi_curr, voci_cme_ex, voci_sic_ex, nome_progetto
+                )
+                st.session_state["_excel_pianificazione"] = buf.getvalue()
+                aggiungi_log("Excel generato", f"Pianificazione {nome_progetto}", "Pianificazione")
+                salva_fn()
+            except Exception as e:
+                st.error(f"Errore generazione Excel: {e}")
+
+        if "_excel_pianificazione" in st.session_state:
+            st.download_button(
+                label="📥 Scarica Excel Pianificazione",
+                data=st.session_state["_excel_pianificazione"],
+                file_name=f"Pianificazione_{nome_progetto}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_excel_pian",
             )
-            st.session_state["_excel_pianificazione"] = buf.getvalue()
-            aggiungi_log("Excel generato", f"Pianificazione {nome_progetto}", "Pianificazione")
-            salva_fn()
-        except Exception as e:
-            st.error(f"Errore generazione Excel: {e}")
 
-    if "_excel_pianificazione" in st.session_state:
-        st.download_button(
-            label="📥 Scarica Excel Pianificazione",
-            data=st.session_state["_excel_pianificazione"],
-            file_name=f"Pianificazione_{nome_progetto}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+    with col_btn2:
+        if st.button("📊 Genera Excel Cruscotto per Fase", key="btn_genera_cruscotto"):
+            with st.spinner("Generazione Excel Cruscotto in corso..."):
+                excel_bytes = _genera_excel_cruscotto(
+                    st.session_state.get("pianificazione", {}),
+                    csa_data,
+                )
+            if excel_bytes:
+                st.session_state["_excel_cruscotto"] = excel_bytes
+                aggiungi_log(
+                    "Excel Cruscotto generato",
+                    f"Cruscotto per Fase — {nome_progetto}",
+                    "Pianificazione",
+                )
+                salva_fn()
+
+        if "_excel_cruscotto" in st.session_state:
+            comune = csa_data.get("comune", "Cantiere")
+            st.download_button(
+                label="⬇️ Scarica Excel Cruscotto",
+                data=st.session_state["_excel_cruscotto"],
+                file_name=f"Cruscotto_Cantiere_{comune}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_excel_cruscotto",
+            )
