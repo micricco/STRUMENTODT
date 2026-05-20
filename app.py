@@ -1306,6 +1306,22 @@ def _render_documenti(csa_data: dict, api_key: str) -> None:
                     with col_act:
                         if doc.get("path"):
                             render_doc_buttons(pathlib.Path(doc["path"]), key=f"doc_{cat_key}_{i}_btn")
+                            usa_piano_key = f"usa_piano_{cat_key}_{doc.get('codice', i)}"
+                            usa = st.toggle(
+                                "📋 Pianificazione",
+                                key=usa_piano_key,
+                                help="Contrassegna questo documento per usarlo nel tab Pianificazione",
+                            )
+                            codice_pian = f"{cat_key}_{doc.get('codice', i)}"
+                            if usa:
+                                flaggati = st.session_state.setdefault("docs_per_pianificazione", {})
+                                flaggati[codice_pian] = {
+                                    "path": doc.get("path"),
+                                    "nome": pathlib.Path(doc.get("path", "")).name,
+                                    "titolo": doc.get("titolo", ""),
+                                }
+                            elif "docs_per_pianificazione" in st.session_state:
+                                st.session_state["docs_per_pianificazione"].pop(codice_pian, None)
                         up = st.file_uploader(
                             "Carica",
                             type=["pdf"],

@@ -588,41 +588,55 @@ def render_pianificazione_tab(
         f"{csa_data.get('comune', '')} ({csa_data.get('provincia', '')})"
     )
 
-    # ── Documenti disponibili dal tab Documenti ───────────────────────────────
-    docs_da_elab = _trova_doc_da_elaborati()
-    docs_da_importare = {
-        k: v for k, v in docs_da_elab.items()
-        if not st.session_state.get(f"piano_{k}_bytes")
+    # ── Documenti flaggati dal tab Documenti ──────────────────────────────────
+    docs_flaggati = st.session_state.get("docs_per_pianificazione", {})
+
+    _RUOLI_MAP = {
+        "📅 Cronoprogramma": "gantt",
+        "📋 CME":            "cme",
+        "💰 Elenco Prezzi":  "elenco",
+        "🦺 Oneri Sicurezza": "sicurezza",
     }
-    if docs_da_importare:
-        st.success(
-            f"✅ **{len(docs_da_importare)} documento/i già caricati** nel tab Documenti "
-            "— disponibili per la pianificazione."
+
+    if docs_flaggati:
+        st.info(
+            f"📂 **{len(docs_flaggati)} documento/i** contrassegnati per la pianificazione "
+            "— seleziona il ruolo e clicca ✅ Usa:"
         )
-        with st.expander("📂 Documenti disponibili da tab Documenti", expanded=True):
-            for tipo, doc in docs_da_importare.items():
-                nome_doc = pathlib.Path(doc["path"]).name
-                c1, c2 = st.columns([4, 1])
-                c1.caption(f"{_LABEL_PIAN[tipo]}: **{nome_doc}**")
-                c2.checkbox("Usa", value=True, key=f"usa_doc_{tipo}")
-            if st.button("📥 Importa documenti selezionati", key="btn_importa_da_documenti"):
-                importati = 0
-                for tipo, doc in docs_da_importare.items():
-                    if st.session_state.get(f"usa_doc_{tipo}", True):
+        for codice, doc in docs_flaggati.items():
+            c1, c2, c3 = st.columns([3, 2, 1])
+            with c1:
+                st.caption(f"📄 **{doc.get('titolo') or doc.get('nome', '')}**")
+            with c2:
+                ruolo = st.selectbox(
+                    "Ruolo",
+                    ["— seleziona —"] + list(_RUOLI_MAP.keys()),
+                    key=f"assegna_{codice}",
+                    label_visibility="collapsed",
+                )
+            with c3:
+                if st.button("✅ Usa", key=f"usa_{codice}"):
+                    tipo = _RUOLI_MAP.get(ruolo)
+                    if tipo and doc.get("path"):
                         try:
                             fb = pathlib.Path(doc["path"]).read_bytes()
                             st.session_state[f"piano_{tipo}_bytes"] = fb
-                            st.session_state[f"piano_{tipo}_nome"] = pathlib.Path(doc["path"]).name
-                            st.session_state[f"piano_{tipo}_path"] = doc["path"]
-                            importati += 1
-                        except Exception:
-                            pass
-                if importati:
-                    st.success(f"✅ {importati} documento/i importati nella Pianificazione!")
-                    piano["_associazione_auto_fatta"] = False
-                    st.rerun()
-                else:
-                    st.warning("Nessun documento selezionato o non leggibile.")
+                            st.session_state[f"piano_{tipo}_nome"] = doc.get("nome", "")
+                            st.session_state[f"piano_{tipo}_path"] = doc.get("path", "")
+                            piano["_associazione_auto_fatta"] = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Errore lettura file: {e}")
+                    elif not tipo:
+                        st.warning("Seleziona un ruolo prima.")
+                    else:
+                        st.warning("File non disponibile.")
+        st.divider()
+    else:
+        st.caption(
+            "💡 Vai nel tab **Documenti** e attiva il toggle **📋 Pianificazione** "
+            "sui file da usare qui."
+        )
 
     # ── KPI sempre visibili in cima ───────────────────────────────────────────
     voci_cme = piano.get("voci_cme", [])
