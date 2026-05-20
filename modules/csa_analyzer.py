@@ -248,35 +248,168 @@ def _ripara_json_troncato(raw: str) -> dict:
     return json.loads(repaired)
 
 
+def _chiama_api_con_retry(client, max_retry: int = 5, **kwargs):
+    """Chiama client.messages.create con retry automatico per errori 529 e rate limit.
+    Usa exponential backoff. Dopo 3 tentativi falliti per overload prova con Haiku."""
+    for tentativo in range(max_retry):
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529:
+                attesa = (2 ** tentativo) + 1
+                if tentativo >= 2:
+                    kwargs["model"] = "claude-haiku-4-5-20251001"
+                    st.warning("⚠️ Fallback su Haiku per ridurre carico...")
+                st.warning(
+                    f"⏳ API sovraccarica, riprovo tra {attesa}s "
+                    f"(tentativo {tentativo + 1}/{max_retry})..."
+                )
+                time.sleep(attesa)
+                continue
+            elif e.status_code == 400 and "too long" in str(e).lower():
+                raise
+            raise
+        except anthropic.RateLimitError:
+            attesa = (2 ** tentativo) + 1
+            st.warning(
+                f"⏳ Rate limit, riprovo tra {attesa}s "
+                f"(tentativo {tentativo + 1}/{max_retry})..."
+            )
+            time.sleep(attesa)
+            continue
+    raise Exception(
+        "API Anthropic non disponibile dopo 5 tentativi. "
+        "Riprova tra qualche minuto."
+    )
+
+
 @st.cache_data(show_spinner=False)
 def analyze_csa(testo: str, api_key: str) -> dict:
-    """Analisi Haiku sul testo pre-estratto da Smart Extract. Sempre singola chiamata."""
-    client = anthropic.Anthropic(api_key=api_key)
+    """Analisi CSA con chunking automatico se testo supera 160.000 token stimati.
+    Stima token: len(testo) / 4 (approssimazione conservativa)."""
+    MAX_TOKEN_SICURO = 160_000
+    stima_token = len(testo) // 4
+    if stima_token <= MAX_TOKEN_SICURO:
+        return _analyze_csa_singolo(testo, api_key)
+    else:
+        return _analyze_csa_chunked(testo, api_key)
 
-    message = client.messages.create(
+
+def _analyze_csa_singolo(testo: str, api_key: str) -> dict:
+    """Singola chiamata API con retry per overload."""
+    client = anthropic.Anthropic(api_key=api_key)
+    message = _chiama_api_con_retry(
+        client,
         model=MODEL_FAST,
         max_tokens=8192,
         timeout=150.0,
-        messages=[
-            {
-                "role": "user",
-                "content": f"{EXTRACTION_PROMPT}\n\nTESTO DEL CSA:\n{testo}",
-            }
-        ],
+        messages=[{
+            "role": "user",
+            "content": f"{EXTRACTION_PROMPT}\n\nTESTO DEL CSA:\n{testo}",
+        }],
     )
-
     raw = message.content[0].text.strip()
-
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
         raw = raw.strip()
-
     if message.stop_reason == "max_tokens":
         return _post_processa_csa_data(_ripara_json_troncato(raw))
-
     return _post_processa_csa_data(json.loads(raw))
+
+
+def _analyze_csa_chunked(testo: str, api_key: str) -> dict:
+    """Divide il testo in chunk da ~120.000 token stimati,
+    analizza ogni chunk separatamente, poi consolida con LLM."""
+    import math
+    client = anthropic.Anthropic(api_key=api_key)
+
+    CHARS_PER_CHUNK = 120_000 * 4  # ~120k token stimati
+    n_chunks = math.ceil(len(testo) / CHARS_PER_CHUNK)
+
+    st.info(
+        f"📄 Testo CSA lungo ({len(testo) // 4:,} token stimati) — "
+        f"analisi in {n_chunks} parti..."
+    )
+
+    risultati_parziali = []
+    for i in range(n_chunks):
+        start = i * CHARS_PER_CHUNK
+        end = min((i + 1) * CHARS_PER_CHUNK, len(testo))
+        chunk = testo[start:end]
+
+        st.caption(f"  🔄 Analisi parte {i + 1}/{n_chunks}...")
+
+        prompt_chunk = CHUNK_PROMPT_TEMPLATE.format(
+            parte=i + 1,
+            totale=n_chunks,
+            chunk=chunk,
+        )
+
+        message = _chiama_api_con_retry(
+            client,
+            model=MODEL_FAST,
+            max_tokens=8192,
+            timeout=150.0,
+            messages=[{"role": "user", "content": prompt_chunk}],
+        )
+
+        raw = message.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+
+        try:
+            if message.stop_reason == "max_tokens":
+                risultati_parziali.append(
+                    _post_processa_csa_data(_ripara_json_troncato(raw))
+                )
+            else:
+                risultati_parziali.append(
+                    _post_processa_csa_data(json.loads(raw))
+                )
+        except Exception:
+            continue
+
+    if not risultati_parziali:
+        raise ValueError("Nessun chunk analizzato correttamente.")
+
+    if len(risultati_parziali) == 1:
+        return risultati_parziali[0]
+
+    st.caption("  🔗 Consolidamento risultati...")
+    json_parziali = "\n\n".join(
+        f"--- PARTE {i + 1} ---\n{json.dumps(r, ensure_ascii=False, indent=2)}"
+        for i, r in enumerate(risultati_parziali)
+    )
+    prompt_consolidation = CONSOLIDATION_PROMPT_TEMPLATE.format(
+        n=len(risultati_parziali),
+        schema=_SCHEMA_CONSOLIDATION,
+        json_parziali=json_parziali,
+    )
+    message = _chiama_api_con_retry(
+        client,
+        model=MODEL_FAST,
+        max_tokens=8192,
+        timeout=150.0,
+        messages=[{"role": "user", "content": prompt_consolidation}],
+    )
+    raw = message.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        return _post_processa_csa_data(json.loads(raw))
+    except Exception:
+        result = risultati_parziali[0]
+        for r in risultati_parziali[1:]:
+            result = unisci_analisi(result, r)
+        return result
 
 
 def estrai_pagine_pdf(pdf_bytes: bytes, da: int, a: int) -> bytes:

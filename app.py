@@ -763,7 +763,22 @@ def _esegui_analisi(pdf_bytes: bytes, api_key: str) -> None:
         st.rerun()
     except Exception as e:
         barra.empty()
-        st.error(f"Errore analisi: {e}")
+        err_str = str(e)
+        if "529" in err_str or "overloaded" in err_str.lower():
+            st.error(
+                "⚠️ **Server Anthropic sovraccarichi (errore 529)**.\n\n"
+                "Attendi 1-2 minuti e riprova."
+            )
+        elif "too long" in err_str.lower() or "400" in err_str:
+            st.error(
+                "⚠️ **Documento troppo lungo per una singola analisi**.\n\n"
+                "Il sistema proverà automaticamente la suddivisione in parti. "
+                "Riprova l'analisi."
+            )
+        else:
+            st.error(f"Errore analisi: {e}")
+        if st.button("🔄 Riprova analisi", key="btn_riprova_csa"):
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
