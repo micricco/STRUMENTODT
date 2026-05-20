@@ -157,6 +157,11 @@ def _salva_analisi() -> None:
     percorso = RESULTS_DIR / f"{slug}.json"
 
     payload = dict(csa_data)
+    # Merge CIG/CUP inseriti manualmente
+    if st.session_state.get("cig_manuale"):
+        payload["cig"] = st.session_state["cig_manuale"]
+    if st.session_state.get("cup_manuale"):
+        payload["cup"] = st.session_state["cup_manuale"]
     payload["_ribasso_pct"] = float(st.session_state.get("ribasso_pct", 0.0))
     payload["_checklist_stato"] = st.session_state.get("checklist_stato", {})
     payload["_log_attivita"] = st.session_state.get("log_attivita", [])
@@ -224,6 +229,11 @@ def _carica_analisi(percorso: pathlib.Path) -> None:
         st.session_state.pianificazione = piano
 
     st.session_state.csa_data = payload
+    # Ripristina CIG/CUP manuale in session_state
+    if payload.get("cig") and payload["cig"] != "—":
+        st.session_state["cig_manuale"] = payload["cig"]
+    if payload.get("cup") and payload["cup"] != "—":
+        st.session_state["cup_manuale"] = payload["cup"]
     st.session_state._file_id = f"__saved__{percorso.name}"
     st.session_state._pdf_nome = percorso.stem
     st.session_state._demo_active = False
@@ -770,10 +780,37 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
 
     st.markdown(f"**{tipo}**  \n{sa}  \n{comune} ({prov})")
 
-    cig = csa_data.get("cig", "")
-    cup = csa_data.get("cup", "")
-    if cig or cup:
-        st.caption(f"CIG: {cig or '—'}  |  CUP: {cup or '—'}")
+    cig = csa_data.get("cig", "") or ""
+    cup = csa_data.get("cup", "") or ""
+    col_cig1, col_cig2 = st.columns(2)
+    with col_cig1:
+        if not cig or cig == "—":
+            cig_input = st.text_input(
+                "CIG (non rilevato — inserisci manualmente)",
+                value=st.session_state.get("cig_manuale", ""),
+                placeholder="Es: 9999999999",
+                key="input_cig_manuale",
+            )
+            if cig_input:
+                st.session_state["cig_manuale"] = cig_input
+                csa_data["cig"] = cig_input
+                _salva_stato_cantiere()
+        else:
+            st.caption(f"CIG: {cig}")
+    with col_cig2:
+        if not cup or cup == "—":
+            cup_input = st.text_input(
+                "CUP (non rilevato — inserisci manualmente)",
+                value=st.session_state.get("cup_manuale", ""),
+                placeholder="Es: J24E22000060001",
+                key="input_cup_manuale",
+            )
+            if cup_input:
+                st.session_state["cup_manuale"] = cup_input
+                csa_data["cup"] = cup_input
+                _salva_stato_cantiere()
+        else:
+            st.caption(f"CUP: {cup}")
 
     st.divider()
 
@@ -963,12 +1000,38 @@ def _render_sintesi(csa_data: dict, importo_netto: float) -> None:
             ("Comune", csa_data.get("comune")),
             ("Provincia", csa_data.get("provincia")),
             ("Regione", csa_data.get("regione")),
-            ("CIG", csa_data.get("cig")),
-            ("CUP", csa_data.get("cup")),
         ]
         for label, val in campi_gen:
             if val:
                 st.markdown(f"**{label}:** {val}")
+        # CIG — editabile se non rilevato
+        cig_s = csa_data.get("cig", "") or ""
+        if cig_s and cig_s != "—":
+            st.markdown(f"✅ **CIG:** {cig_s}")
+        else:
+            cig_s2 = st.text_input(
+                "CIG (non rilevato — inserisci manualmente)",
+                value=st.session_state.get("cig_manuale", ""),
+                placeholder="Es: 9999999999",
+                key="sintesi_cig_manuale",
+            )
+            if cig_s2:
+                st.session_state["cig_manuale"] = cig_s2
+                csa_data["cig"] = cig_s2
+        # CUP — editabile se non rilevato
+        cup_s = csa_data.get("cup", "") or ""
+        if cup_s and cup_s != "—":
+            st.markdown(f"✅ **CUP:** {cup_s}")
+        else:
+            cup_s2 = st.text_input(
+                "CUP (non rilevato — inserisci manualmente)",
+                value=st.session_state.get("cup_manuale", ""),
+                placeholder="Es: J24E22000060001",
+                key="sintesi_cup_manuale",
+            )
+            if cup_s2:
+                st.session_state["cup_manuale"] = cup_s2
+                csa_data["cup"] = cup_s2
 
     with col2:
         st.subheader("Parametri contrattuali")
