@@ -536,6 +536,40 @@ def _genera_excel_cruscotto(pianificazione_data: dict, csa_data: dict) -> bytes 
         return None
 
 
+# ── Rilevamento documenti già caricati nel tab Documenti ─────────────────────
+
+_KEYWORDS_PIAN: dict[str, list[str]] = {
+    "gantt":     ["cronoprogramma", "programma lavori", "gantt", "programma dei lavori"],
+    "cme":       ["computo metrico", "cme", "computo estimativo", "computo metrico estimativo"],
+    "elenco":    ["elenco prezzi", "elenco dei prezzi", "listino prezzi"],
+    "sicurezza": ["oneri sicurezza", "oneri per la sicurezza", "psc",
+                  "piano di sicurezza", "misure sicurezza"],
+}
+
+_LABEL_PIAN: dict[str, str] = {
+    "gantt":     "📅 Cronoprogramma",
+    "cme":       "📋 Computo Metrico Estimativo",
+    "elenco":    "💰 Elenco Prezzi",
+    "sicurezza": "🦺 Oneri per la Sicurezza",
+}
+
+
+def _trova_doc_da_elaborati() -> dict[str, dict]:
+    """Scansiona doc_elaborati cercando documenti utili alla pianificazione."""
+    doc_elaborati = st.session_state.get("doc_elaborati", {})
+    trovati: dict[str, dict] = {}
+    for cat_docs in doc_elaborati.values():
+        for doc in (cat_docs or []):
+            if not doc.get("path"):
+                continue
+            testo = (doc.get("titolo", "") + " " + doc.get("codice", "")).lower()
+            for tipo, kws in _KEYWORDS_PIAN.items():
+                if tipo not in trovati and any(kw in testo for kw in kws):
+                    trovati[tipo] = doc
+                    break
+    return trovati
+
+
 # ── Render principale ─────────────────────────────────────────────────────────
 
 def render_pianificazione_tab(
@@ -553,6 +587,42 @@ def render_pianificazione_tab(
         f"{csa_data.get('tipo_lavori', 'Cantiere')} — "
         f"{csa_data.get('comune', '')} ({csa_data.get('provincia', '')})"
     )
+
+    # ── Documenti disponibili dal tab Documenti ───────────────────────────────
+    docs_da_elab = _trova_doc_da_elaborati()
+    docs_da_importare = {
+        k: v for k, v in docs_da_elab.items()
+        if not st.session_state.get(f"piano_{k}_bytes")
+    }
+    if docs_da_importare:
+        st.success(
+            f"✅ **{len(docs_da_importare)} documento/i già caricati** nel tab Documenti "
+            "— disponibili per la pianificazione."
+        )
+        with st.expander("📂 Documenti disponibili da tab Documenti", expanded=True):
+            for tipo, doc in docs_da_importare.items():
+                nome_doc = pathlib.Path(doc["path"]).name
+                c1, c2 = st.columns([4, 1])
+                c1.caption(f"{_LABEL_PIAN[tipo]}: **{nome_doc}**")
+                c2.checkbox("Usa", value=True, key=f"usa_doc_{tipo}")
+            if st.button("📥 Importa documenti selezionati", key="btn_importa_da_documenti"):
+                importati = 0
+                for tipo, doc in docs_da_importare.items():
+                    if st.session_state.get(f"usa_doc_{tipo}", True):
+                        try:
+                            fb = pathlib.Path(doc["path"]).read_bytes()
+                            st.session_state[f"piano_{tipo}_bytes"] = fb
+                            st.session_state[f"piano_{tipo}_nome"] = pathlib.Path(doc["path"]).name
+                            st.session_state[f"piano_{tipo}_path"] = doc["path"]
+                            importati += 1
+                        except Exception:
+                            pass
+                if importati:
+                    st.success(f"✅ {importati} documento/i importati nella Pianificazione!")
+                    piano["_associazione_auto_fatta"] = False
+                    st.rerun()
+                else:
+                    st.warning("Nessun documento selezionato o non leggibile.")
 
     # ── KPI sempre visibili in cima ───────────────────────────────────────────
     voci_cme = piano.get("voci_cme", [])
@@ -581,46 +651,56 @@ def render_pianificazione_tab(
     with col_sx:
         st.subheader("📅 Cronoprogramma")
 
-        file_gantt = st.file_uploader(
-            "Carica Cronoprogramma",
-            type=["pdf", "xlsx", "xls"],
-            key="upload_gantt",
-        )
+        gantt_b_imp = st.session_state.get("piano_gantt_bytes")
+        gantt_n_imp = st.session_state.get("piano_gantt_nome", "")
 
-        if file_gantt:
-            fid = f"{file_gantt.name}_{file_gantt.size}"
-            if fid != piano.get("_gantt_file_id"):
-                fb = file_gantt.read()
-                file_gantt.seek(0)
-                fasi_estratte: list[dict] = []
+        def _processa_gantt(fb: bytes, nome: str, fid: str) -> None:
+            fasi_e: list[dict] = []
+            if nome.lower().endswith((".xlsx", ".xls")):
+                fasi_e = _estrai_fasi_gantt_excel(fb)
+            else:
+                if not api_key:
+                    st.error("API key mancante per analizzare PDF Gantt.")
+                    return
+                with st.spinner("Estrazione fasi da PDF…"):
+                    fasi_e = _estrai_fasi_gantt_pdf(_estrai_testo_pdf(fb), api_key)
+            if fasi_e:
+                piano["fasi"] = fasi_e
+                piano["_gantt_file_id"] = fid
+                piano["_associazione_auto_fatta"] = False
+                aggiungi_log("Gantt caricato", f"{nome} — {len(fasi_e)} fasi", "Pianificazione")
+                aggiungi_al_diario(
+                    f"Cronoprogramma caricato: {nome} — {len(fasi_e)} fasi",
+                    "🟡 Adempimento Organizzativo",
+                )
+                salva_fn()
+                st.rerun()
+            elif not piano.get("fasi"):
+                st.warning("Nessuna fase estratta. Usa l'inserimento manuale.")
+            else:
+                piano["_gantt_file_id"] = fid
 
-                if file_gantt.name.lower().endswith((".xlsx", ".xls")):
-                    fasi_estratte = _estrai_fasi_gantt_excel(fb)
-                else:
-                    if not api_key:
-                        st.error("API key mancante per analizzare PDF Gantt.")
-                    else:
-                        with st.spinner("Estrazione fasi da PDF…"):
-                            testo = _estrai_testo_pdf(fb)
-                            fasi_estratte = _estrai_fasi_gantt_pdf(testo, api_key)
-
-                if fasi_estratte:
-                    piano["fasi"] = fasi_estratte
-                    piano["_gantt_file_id"] = fid
-                    piano["_associazione_auto_fatta"] = False
-                    aggiungi_log(
-                        "Gantt caricato",
-                        f"{file_gantt.name} — {len(fasi_estratte)} fasi",
-                        "Pianificazione",
-                    )
-                    aggiungi_al_diario(
-                        f"Cronoprogramma caricato: {file_gantt.name} — {len(fasi_estratte)} fasi",
-                        "🟡 Adempimento Organizzativo",
-                    )
-                    salva_fn()
+        if gantt_b_imp:
+            st.success(f"✅ Cronoprogramma: **{gantt_n_imp}** (importato da Documenti)")
+            _, col_sost_g = st.columns([3, 1])
+            with col_sost_g:
+                if st.button("🔄 Sostituisci", key="sostituisci_gantt"):
+                    for k in ("piano_gantt_bytes", "piano_gantt_nome", "piano_gantt_path"):
+                        st.session_state.pop(k, None)
                     st.rerun()
-                else:
-                    st.warning("Nessuna fase estratta. Usa l'inserimento manuale.")
+            fid_imp_g = f"piano_gantt_{gantt_n_imp}"
+            if fid_imp_g != piano.get("_gantt_file_id"):
+                _processa_gantt(gantt_b_imp, gantt_n_imp, fid_imp_g)
+        else:
+            file_gantt = st.file_uploader(
+                "Carica Cronoprogramma",
+                type=["pdf", "xlsx", "xls"],
+                key="upload_gantt",
+            )
+            if file_gantt:
+                fid = f"{file_gantt.name}_{file_gantt.size}"
+                if fid != piano.get("_gantt_file_id"):
+                    _processa_gantt(file_gantt.read(), file_gantt.name, fid)
 
         if piano.get("fasi"):
             df_fasi = pd.DataFrame(piano["fasi"])
@@ -662,65 +742,112 @@ def render_pianificazione_tab(
     with col_dx:
         st.subheader("📋 Documenti di Computo")
 
-        files_cme = st.file_uploader(
-            "Computo Metrico Estimativo (uno o più PDF)",
-            type=["pdf"],
-            accept_multiple_files=True,
-            key="upload_cme",
-        )
+        # ── CME ──────────────────────────────────────────────────────────────
+        cme_b_imp = st.session_state.get("piano_cme_bytes")
+        cme_n_imp = st.session_state.get("piano_cme_nome", "")
+        if cme_b_imp:
+            st.success(f"✅ CME: **{cme_n_imp}** (importato da Documenti)")
+            if st.button("🔄 Sostituisci CME", key="sostituisci_cme"):
+                for k in ("piano_cme_bytes", "piano_cme_nome", "piano_cme_path"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+            files_cme = []
+        else:
+            files_cme = st.file_uploader(
+                "Computo Metrico Estimativo (uno o più PDF)",
+                type=["pdf"],
+                accept_multiple_files=True,
+                key="upload_cme",
+            )
+            for f in (files_cme or []):
+                st.success(f"✅ {f.name} — {_get_pagine_cached(f)} pagine")
 
-        file_elenco = st.file_uploader(
-            "Elenco Prezzi (PDF)",
-            type=["pdf"],
-            key="upload_elenco",
-        )
+        # ── Elenco prezzi ─────────────────────────────────────────────────────
+        elenco_b_imp = st.session_state.get("piano_elenco_bytes")
+        elenco_n_imp = st.session_state.get("piano_elenco_nome", "")
+        if elenco_b_imp:
+            st.success(f"✅ Elenco Prezzi: **{elenco_n_imp}** (importato da Documenti)")
+            if st.button("🔄 Sostituisci Elenco Prezzi", key="sostituisci_elenco"):
+                for k in ("piano_elenco_bytes", "piano_elenco_nome", "piano_elenco_path"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+            file_elenco = None
+        else:
+            file_elenco = st.file_uploader(
+                "Elenco Prezzi (PDF)",
+                type=["pdf"],
+                key="upload_elenco",
+            )
+            if file_elenco:
+                st.success(f"✅ {file_elenco.name} — {_get_pagine_cached(file_elenco)} pagine")
 
-        file_sicurezza = st.file_uploader(
-            "Oneri per la Sicurezza (PDF)",
-            type=["pdf"],
-            key="upload_sicurezza",
-        )
+        # ── Oneri sicurezza ──────────────────────────────────────────────────
+        sic_b_imp = st.session_state.get("piano_sicurezza_bytes")
+        sic_n_imp = st.session_state.get("piano_sicurezza_nome", "")
+        if sic_b_imp:
+            st.success(f"✅ Oneri Sicurezza: **{sic_n_imp}** (importato da Documenti)")
+            if st.button("🔄 Sostituisci Sicurezza", key="sostituisci_sicurezza"):
+                for k in ("piano_sicurezza_bytes", "piano_sicurezza_nome", "piano_sicurezza_path"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+            file_sicurezza = None
+        else:
+            file_sicurezza = st.file_uploader(
+                "Oneri per la Sicurezza (PDF)",
+                type=["pdf"],
+                key="upload_sicurezza",
+            )
+            if file_sicurezza:
+                st.success(f"✅ {file_sicurezza.name} — {_get_pagine_cached(file_sicurezza)} pagine")
 
-        # Mostra stato file caricati
-        for f in (files_cme or []):
-            n_pag = _get_pagine_cached(f)
-            st.success(f"✅ {f.name} — {n_pag} pagine caricato")
+        ha_cme = bool(files_cme or cme_b_imp)
+        ha_sic = bool(file_sicurezza or sic_b_imp)
 
-        if file_elenco:
-            n_pag = _get_pagine_cached(file_elenco)
-            st.success(f"✅ {file_elenco.name} — {n_pag} pagine caricato")
-
-        if file_sicurezza:
-            n_pag = _get_pagine_cached(file_sicurezza)
-            st.success(f"✅ {file_sicurezza.name} — {n_pag} pagine caricato")
-
-        if files_cme or file_sicurezza:
+        if ha_cme or ha_sic:
             if st.button("🔍 Estrai dati da tutti i documenti", type="primary", key="pian_estrai"):
                 if not api_key:
                     st.error("API key mancante nella sidebar.")
                 else:
                     tutte_cme: list[dict] = []
                     tutte_sic: list[dict] = []
-                    ids_cme = [f"{f.name}_{f.size}" for f in (files_cme or [])]
+                    ids_cme: list[str] = []
+
+                    if cme_b_imp:
+                        with st.spinner(f"Analisi CME importato ({cme_n_imp})…"):
+                            tutte_cme.extend(
+                                _estrai_voci_cme(_estrai_testo_pdf(cme_b_imp), api_key)
+                            )
+                        ids_cme.append(f"piano_cme_{cme_n_imp}")
 
                     if files_cme:
+                        ids_cme += [f"{f.name}_{f.size}" for f in files_cme]
                         prog = st.progress(0.0, text="Analisi CME…")
                         for i, f in enumerate(files_cme):
                             prog.progress(
                                 (i + 0.5) / len(files_cme),
                                 text=f"Analisi {f.name}…",
                             )
-                            testo = _estrai_testo_pdf(f.read())
+                            tutte_cme.extend(
+                                _estrai_voci_cme(_estrai_testo_pdf(f.read()), api_key)
+                            )
                             f.seek(0)
-                            voci = _estrai_voci_cme(testo, api_key)
-                            tutte_cme.extend(voci)
                         prog.progress(1.0, text="CME completato.")
 
-                    if file_sicurezza:
+                    if sic_b_imp:
+                        with st.spinner(f"Analisi Sicurezza importata ({sic_n_imp})…"):
+                            tutte_sic = _estrai_voci_sicurezza(
+                                _estrai_testo_pdf(sic_b_imp), api_key
+                            )
+                        sic_fid: str | None = f"piano_sicurezza_{sic_n_imp}"
+                    elif file_sicurezza:
                         with st.spinner(f"Analisi {file_sicurezza.name}…"):
-                            testo_sic = _estrai_testo_pdf(file_sicurezza.read())
+                            tutte_sic = _estrai_voci_sicurezza(
+                                _estrai_testo_pdf(file_sicurezza.read()), api_key
+                            )
                             file_sicurezza.seek(0)
-                            tutte_sic = _estrai_voci_sicurezza(testo_sic, api_key)
+                        sic_fid = f"{file_sicurezza.name}_{file_sicurezza.size}"
+                    else:
+                        sic_fid = None
 
                     piano["voci_cme"] = tutte_cme
                     piano["voci_sicurezza"] = tutte_sic
@@ -731,10 +858,7 @@ def render_pianificazione_tab(
                         float(v.get("importo_totale") or 0) for v in tutte_sic
                     )
                     piano["_cme_file_ids"] = ids_cme
-                    piano["_sicurezza_file_id"] = (
-                        f"{file_sicurezza.name}_{file_sicurezza.size}"
-                        if file_sicurezza else None
-                    )
+                    piano["_sicurezza_file_id"] = sic_fid
                     piano["_associazione_auto_fatta"] = False
                     n_c = len(tutte_cme)
                     n_s = len(tutte_sic)

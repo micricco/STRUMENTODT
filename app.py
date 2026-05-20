@@ -1293,6 +1293,14 @@ def _render_documenti(csa_data: dict, api_key: str) -> None:
                     with col_stato:
                         if doc.get("path"):
                             st.success("✅")
+                            _pian_paths = {
+                                st.session_state.get("piano_gantt_path"),
+                                st.session_state.get("piano_cme_path"),
+                                st.session_state.get("piano_elenco_path"),
+                                st.session_state.get("piano_sicurezza_path"),
+                            } - {None, ""}
+                            if doc.get("path") in _pian_paths:
+                                st.caption("📋 Pianif.")
                         else:
                             st.warning("—")
                     with col_act:
