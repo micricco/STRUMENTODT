@@ -208,6 +208,200 @@ def _post_processa_csa_data(data: dict) -> dict:
     return data
 
 
+def _valida_csa_data(data: dict) -> dict:
+    """Valida i dati estratti contro i limiti normativi D.Lgs. 36/2023.
+    Aggiunge '_warnings_validazione' con anomalie rilevate e corregge
+    automaticamente i valori impossibili."""
+    warnings_val = []
+
+    # Subappalto max 30% — Art. 119 D.Lgs. 36/2023
+    sub_pct = data.get("subappalto_percentuale_massima")
+    if sub_pct is not None:
+        try:
+            sub_pct = float(sub_pct)
+            if sub_pct > 30.0:
+                warnings_val.append(
+                    f"⚠️ Subappalto {sub_pct}% supera limite legale 30% (Art. 119) — "
+                    "verifica il testo del CSA"
+                )
+            if sub_pct <= 0:
+                data["subappalto_percentuale_massima"] = None
+                warnings_val.append("⚠️ Subappalto percentuale <= 0 — reimpostato a null")
+        except (ValueError, TypeError):
+            pass
+
+    # Anticipazione max 20% — Art. 125 D.Lgs. 36/2023
+    ant_pct = data.get("anticipazione_percentuale")
+    if ant_pct is not None:
+        try:
+            ant_pct = float(ant_pct)
+            if ant_pct > 20.0:
+                warnings_val.append(
+                    f"⚠️ Anticipazione {ant_pct}% supera limite legale 20% (Art. 125) — "
+                    "corretto a 20%"
+                )
+                data["anticipazione_percentuale"] = 20.0
+            elif ant_pct <= 0:
+                data["anticipazione_percentuale"] = None
+        except (ValueError, TypeError):
+            pass
+
+    # Penale giornaliera: range ragionevole 0.1‰–3‰
+    penale = data.get("penale_giornaliera_permille")
+    if penale is not None:
+        try:
+            penale = float(penale)
+            if penale > 3.0:
+                warnings_val.append(
+                    f"⚠️ Penale giornaliera {penale}‰ inusuale (range tipico 0.3–1‰) — "
+                    "verifica manualmente"
+                )
+            if penale <= 0:
+                data["penale_giornaliera_permille"] = None
+        except (ValueError, TypeError):
+            pass
+
+    # Penale massima: tipicamente 10% — Art. 113 D.Lgs. 36/2023
+    penale_max = data.get("penale_massima_percentuale")
+    if penale_max is not None:
+        try:
+            if float(penale_max) > 10.0:
+                warnings_val.append(
+                    f"⚠️ Penale massima {penale_max}% supera soglia tipica 10% (Art. 113) — "
+                    "verifica il testo del CSA"
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # Durata lavori: range ragionevole 10–1500 giorni
+    durata = data.get("durata_lavori_giorni")
+    if durata is not None:
+        try:
+            durata = int(durata)
+            if durata < 10:
+                warnings_val.append(
+                    f"⚠️ Durata lavori {durata} giorni sembra troppo breve — "
+                    "probabile errore di estrazione"
+                )
+                data["durata_lavori_giorni"] = None
+            elif durata > 1500:
+                warnings_val.append(
+                    f"⚠️ Durata lavori {durata} giorni sembra eccessiva — "
+                    "verifica manualmente"
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # Riserve iscrizione: tipicamente 15 gg — Art. 121 D.Lgs. 36/2023
+    ris_isc = data.get("riserve_iscrizione_giorni")
+    if ris_isc is not None:
+        try:
+            if int(ris_isc) > 30:
+                warnings_val.append(
+                    f"⚠️ Riserve iscrizione {ris_isc}gg supera termine tipico 15gg — "
+                    "verifica Art. 121 D.Lgs. 36/2023"
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # CIG: esattamente 10 caratteri alfanumerici
+    cig = data.get("cig")
+    if cig and str(cig).strip() not in ("—", "null", "None", ""):
+        cig_clean = str(cig).strip().upper()
+        if len(cig_clean) != 10 or not cig_clean.isalnum():
+            warnings_val.append(
+                f"⚠️ CIG '{cig}' non ha il formato corretto (10 caratteri alfanumerici) — "
+                "verifica manualmente"
+            )
+            data["cig"] = None
+
+    # CUP: esattamente 15 caratteri alfanumerici
+    cup = data.get("cup")
+    if cup and str(cup).strip() not in ("—", "null", "None", ""):
+        cup_clean = str(cup).strip().upper()
+        if len(cup_clean) != 15 or not cup_clean.isalnum():
+            warnings_val.append(
+                f"⚠️ CUP '{cup}' non ha il formato corretto (15 caratteri alfanumerici) — "
+                "verifica manualmente"
+            )
+            data["cup"] = None
+
+    # Importo lavori: deve essere > 0
+    importo_raw = data.get("importo_lavori")
+    if importo_raw is not None:
+        val_imp = _parse_num_simple(importo_raw)
+        if val_imp <= 0:
+            warnings_val.append("⚠️ Importo lavori <= 0 — probabile errore di estrazione")
+            data["importo_lavori"] = None
+
+    # SAL tipo coerente con i valori numerici
+    sal_tipo = data.get("sal_tipo")
+    sal_gg = data.get("sal_intervallo_giorni")
+    sal_imp = data.get("sal_importo_minimo_euro")
+    sal_pct = data.get("sal_percentuale_minima")
+    if sal_tipo == "tempo" and not sal_gg:
+        warnings_val.append("⚠️ SAL tipo 'tempo' ma sal_intervallo_giorni è null — rimosso tipo")
+        data["sal_tipo"] = None
+    if sal_tipo == "importo" and not sal_imp and not sal_pct:
+        warnings_val.append("⚠️ SAL tipo 'importo' ma importo/percentuale null — rimosso tipo")
+        data["sal_tipo"] = None
+
+    data["_warnings_validazione"] = warnings_val
+    data["_n_warnings"] = len(warnings_val)
+    return data
+
+
+def _calcola_confidence(data: dict) -> dict:
+    """Calcola un punteggio di confidenza 0–100 per ogni campo critico.
+    100 = estratto senza anomalie, 0 = non estratto."""
+    campi_critici = {
+        "importo_lavori":                "💰 Importo lavori",
+        "durata_lavori_giorni":          "📅 Durata lavori",
+        "stazione_appaltante":           "🏛️ Stazione appaltante",
+        "tipo_lavori":                   "🏗️ Tipo lavori",
+        "sal_tipo":                      "📊 SAL tipo",
+        "penale_giornaliera_permille":   "⚠️ Penale giornaliera",
+        "penale_massima_percentuale":    "⚠️ Penale massima",
+        "subappalto_percentuale_massima": "🤝 Subappalto %",
+        "cig":                           "🔑 CIG",
+        "cup":                           "🔑 CUP",
+        "anticipazione_percentuale":     "💶 Anticipazione %",
+        "tipo_contratto":                "📋 Tipo contratto",
+        "categorie_soa":                 "🏆 Categorie SOA",
+    }
+
+    warnings_set = set()
+    for w in data.get("_warnings_validazione", []):
+        for campo in campi_critici:
+            if campo.replace("_", " ") in w.lower() or campo in w.lower():
+                warnings_set.add(campo)
+
+    confidence = {}
+    score_totale = 0
+
+    for campo, label in campi_critici.items():
+        valore = data.get(campo)
+        vuoto = (
+            valore is None
+            or valore == ""
+            or valore == "—"
+            or (isinstance(valore, list) and len(valore) == 0)
+        )
+        if vuoto:
+            score = 0
+        elif campo in warnings_set:
+            score = 40
+        else:
+            score = 90
+        confidence[campo] = {"label": label, "score": score, "valore": valore}
+        score_totale += score
+
+    score_medio = score_totale // len(campi_critici)
+    data["_confidence"] = confidence
+    data["_confidence_score"] = score_medio
+    return data
+
+
 def _ripara_json_troncato(raw: str) -> dict:
     """Tenta di riparare un JSON troncato chiudendo le strutture aperte."""
     stack: list[str] = []
@@ -318,8 +512,12 @@ def _analyze_csa_singolo(testo: str, api_key: str) -> dict:
             raw = raw[4:]
         raw = raw.strip()
     if message.stop_reason == "max_tokens":
-        return _post_processa_csa_data(_ripara_json_troncato(raw))
-    return _post_processa_csa_data(json.loads(raw))
+        result = _post_processa_csa_data(_ripara_json_troncato(raw))
+    else:
+        result = _post_processa_csa_data(json.loads(raw))
+    result = _valida_csa_data(result)
+    result = _calcola_confidence(result)
+    return result
 
 
 def _analyze_csa_chunked(testo: str, api_key: str) -> dict:
@@ -381,7 +579,9 @@ def _analyze_csa_chunked(testo: str, api_key: str) -> dict:
         raise ValueError("Nessun chunk analizzato correttamente.")
 
     if len(risultati_parziali) == 1:
-        return risultati_parziali[0]
+        result = _valida_csa_data(risultati_parziali[0])
+        result = _calcola_confidence(result)
+        return result
 
     st.caption("  🔗 Consolidamento risultati...")
     json_parziali = "\n\n".join(
@@ -407,12 +607,14 @@ def _analyze_csa_chunked(testo: str, api_key: str) -> dict:
             raw = raw[4:]
         raw = raw.strip()
     try:
-        return _post_processa_csa_data(json.loads(raw))
+        result = _post_processa_csa_data(json.loads(raw))
     except Exception:
         result = risultati_parziali[0]
         for r in risultati_parziali[1:]:
             result = unisci_analisi(result, r)
-        return result
+    result = _valida_csa_data(result)
+    result = _calcola_confidence(result)
+    return result
 
 
 def estrai_pagine_pdf(pdf_bytes: bytes, da: int, a: int) -> bytes:
@@ -565,37 +767,86 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
         "penali": [
             "penale", "penali", "art.113", "art. 113",
             "ritardo", "sanzione", "decurtazione",
+            "penalità", "mora", "inadempienza",
         ],
         "scadenze": [
             "termine", "giorni naturali", "giorni consecutivi",
             "scadenza", "ultimazione lavori", "consegna dei lavori",
-            "entro e non oltre",
+            "entro e non oltre", "giorni lavorativi", "giorni solari",
+            "ultimazione", "consegna cantiere",
         ],
         "sal": [
             "stato avanzamento", "s.a.l.", "sal ",
             "acconto", "certificato di pagamento",
             "rata di acconto", "importo minimo",
+            "avanzamento lavori", "contabilità", "libretto misure",
+            "stato avanzamento lavori",
         ],
         "obblighi": [
             "obblighi dell'appaltatore", "oneri a carico",
             "direttore tecnico", "direttore di cantiere",
-            "responsabilità dell'impresa",
+            "responsabilità dell'impresa", "obblighi dell'impresa",
+            "oneri dell'appaltatore", "adempimenti",
         ],
         "subappalto": [
             "subappalto", "art.119", "art. 119",
-            "subappaltatore", "cottimo",
+            "subappaltatore", "cottimo", "subaffidamento",
+            "art.122", "art. 122", "sub-appalto",
         ],
         "revisione": [
             "revisione prezzi", "art.60", "art. 60",
             "istat", "indice dei prezzi", "compensazione",
+            "adeguamento prezzi", "revisione del corrispettivo",
+            "aggiornamento prezzi",
         ],
         "garanzie": [
             "cauzione definitiva", "polizza car",
             "polizza rct", "garanzia fideiussoria", "durc",
+            "assicurazione", "polizza", "fideiussione",
+            "garanzia definitiva", "polizza infortuni",
         ],
         "importi": [
             "importo contrattuale", "importo netto",
             "ribasso", "base d'asta", "somme a disposizione",
+            "importo lavori", "valore appalto", "corrispettivo",
+            "importo totale", "quadro economico",
+        ],
+        "anticipazione": [
+            "anticipazione", "art.125", "art. 125",
+            "anticipazione del prezzo", "anticipo contrattuale",
+            "anticipazione contrattuale",
+        ],
+        "riserve": [
+            "riserve", "art.120", "art. 121", "art. 120",
+            "riserva", "contestazione", "pretese dell'appaltatore",
+            "registro di contabilità", "atti contabili",
+        ],
+        "varianti": [
+            "variante", "varianti", "art.120",
+            "modifica contrattuale", "perizia di variante",
+            "lavori aggiuntivi", "opere aggiuntive",
+        ],
+        "collaudo": [
+            "collaudo", "certificato di regolare esecuzione",
+            "cre", "commissione collaudo", "art.116",
+            "allegato ii.14", "verifica di conformità",
+        ],
+        "cam": [
+            "criteri ambientali minimi", "cam",
+            "dm 23/06/2022", "acquisti verdi",
+            "gpp", "appalti verdi", "ambientali minimi",
+        ],
+        "tracciabilita": [
+            "tracciabilità", "cig", "cup",
+            "l. 136/2010", "legge 136",
+            "codice identificativo", "codice unico",
+            "flussi finanziari",
+        ],
+        "sicurezza": [
+            "piano di sicurezza", "psc", "pos",
+            "coordinatore sicurezza", "d.lgs. 81",
+            "dlgs 81", "oneri sicurezza", "cse", "csp",
+            "notifica preliminare",
         ],
     }
 

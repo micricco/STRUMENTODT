@@ -675,6 +675,18 @@ def _render_sidebar() -> str:
                         st.error(f"Errore Excel: {e}")
 
             # ── Notifiche email ────────────────────────────────────────────────
+            # ── Qualità estrazione ────────────────────────────────────────────
+            conf_score = csa_data.get("_confidence_score", 0)
+            if conf_score > 0:
+                colore_conf = "🟢" if conf_score >= 80 else ("🟡" if conf_score >= 60 else "🔴")
+                st.metric("Qualità estrazione", f"{colore_conf} {conf_score}/100")
+
+            warnings_val = csa_data.get("_warnings_validazione", [])
+            if warnings_val:
+                with st.expander(f"⚠️ {len(warnings_val)} anomalie rilevate", expanded=False):
+                    for w in warnings_val:
+                        st.caption(w)
+
             with st.expander("📧 Notifiche email scadenze"):
                 giorni_soglia = st.slider(
                     "Scadenze entro (giorni)", 7, 90, 30, key="email_giorni"
@@ -1022,6 +1034,33 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
 def _render_sintesi(csa_data: dict, importo_netto: float) -> None:
     st.header("📋 Sintesi CSA")
 
+    # Badge confidence per campo critico
+    _conf = csa_data.get("_confidence", {})
+
+    def _badge_conf(campo: str) -> str:
+        score = _conf.get(campo, {}).get("score", 0)
+        if score >= 80:
+            return "🟢"
+        if score >= 50:
+            return "🟡"
+        if score > 0:
+            return "🔴"
+        return "⬜"
+
+    # Pannello qualità estrazione
+    conf_score = csa_data.get("_confidence_score", 0)
+    n_warn = csa_data.get("_n_warnings", 0)
+    if conf_score > 0:
+        colore_conf = "🟢" if conf_score >= 80 else ("🟡" if conf_score >= 60 else "🔴")
+        col_q1, col_q2 = st.columns(2)
+        col_q1.metric("Qualità estrazione", f"{colore_conf} {conf_score}/100",
+                      help="Media confidence sui campi critici — 🟢≥80 🟡≥60 🔴<60 ⬜=non estratto")
+        if n_warn > 0:
+            col_q2.metric("Anomalie normative", f"⚠️ {n_warn}",
+                          help="Vedi sezione Anomalie in fondo alla pagina")
+        else:
+            col_q2.metric("Anomalie normative", "✅ 0")
+
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Dati generali")
@@ -1069,16 +1108,16 @@ def _render_sintesi(csa_data: dict, importo_netto: float) -> None:
         st.subheader("Parametri contrattuali")
         importo_lordo = _parse_importo(csa_data.get("importo_lavori"))
         ribasso_pct = float(st.session_state.get("ribasso_pct", 0.0))
-        st.markdown(f"**Importo lordo:** {csa_data.get('importo_lavori', '—')}")
+        st.markdown(f"**{_badge_conf('importo_lavori')} Importo lordo:** {csa_data.get('importo_lavori', '—')}")
         if ribasso_pct > 0:
             st.markdown(f"**Ribasso:** {ribasso_pct:.2f}%")
             st.markdown(f"**Importo netto:** € {importo_netto:,.2f}")
-        st.markdown(f"**Durata:** {csa_data.get('durata_lavori_giorni', '—')} giorni")
-        st.markdown(f"**Tipo contratto:** {csa_data.get('tipo_contratto', '—')}")
+        st.markdown(f"**{_badge_conf('durata_lavori_giorni')} Durata:** {csa_data.get('durata_lavori_giorni', '—')} giorni")
+        st.markdown(f"**{_badge_conf('tipo_contratto')} Tipo contratto:** {csa_data.get('tipo_contratto', '—')}")
         prezzario = " ".join(filter(None, [csa_data.get("prezzario_nome"), csa_data.get("prezzario_anno")]))
         if prezzario:
             st.markdown(f"**Prezzario:** {prezzario}")
-        st.markdown(f"**SAL tipo:** {csa_data.get('sal_tipo', '—')}")
+        st.markdown(f"**{_badge_conf('sal_tipo')} SAL tipo:** {csa_data.get('sal_tipo', '—')}")
         sal_gg = csa_data.get("sal_intervallo_giorni")
         sal_imp = csa_data.get("sal_importo_minimo_euro")
         sal_pct = csa_data.get("sal_percentuale_minima")
@@ -1088,8 +1127,8 @@ def _render_sintesi(csa_data: dict, importo_netto: float) -> None:
             st.markdown(f"**SAL importo minimo:** € {sal_imp:,.2f}")
         if sal_pct:
             st.markdown(f"**SAL % minima:** {sal_pct}%")
-        st.markdown(f"**Penale giornaliera:** {csa_data.get('penale_giornaliera_permille', '—')}‰")
-        st.markdown(f"**Penale massima:** {csa_data.get('penale_massima_percentuale', '—')}%")
+        st.markdown(f"**{_badge_conf('penale_giornaliera_permille')} Penale giornaliera:** {csa_data.get('penale_giornaliera_permille', '—')}‰")
+        st.markdown(f"**{_badge_conf('penale_massima_percentuale')} Penale massima:** {csa_data.get('penale_massima_percentuale', '—')}%")
         st.markdown(f"**Riserve iscrizione:** {csa_data.get('riserve_iscrizione_giorni', '—')} gg")
         st.markdown(f"**Riserve quantificazione:** {csa_data.get('riserve_quantificazione_giorni', '—')} gg")
         st.markdown(f"**Collaudo:** {csa_data.get('collaudo_giorni', '—')} gg")
@@ -1148,6 +1187,15 @@ def _render_sintesi(csa_data: dict, importo_netto: float) -> None:
         st.subheader("Obblighi Stazione Appaltante")
         for ob in csa_data.get("obblighi_stazione_appaltante", []):
             st.markdown(f"• {ob}")
+
+    # Anomalie validazione normativa
+    warnings_val = csa_data.get("_warnings_validazione", [])
+    if warnings_val:
+        st.divider()
+        with st.expander(f"⚠️ {len(warnings_val)} anomalie rilevate dalla validazione normativa", expanded=False):
+            st.caption("Questi valori potrebbero essere estratti in modo impreciso o non conformi ai limiti di legge. Verifica il testo originale del CSA.")
+            for w in warnings_val:
+                st.warning(w)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
