@@ -700,6 +700,17 @@ def _render_sidebar() -> str:
                     ok, msg = _invia_email_scadenze(smtp_srv, smtp_prt, mitt, pwd, dest, csa_data, giorni_soglia)
                     (st.success if ok else st.error)(msg)
 
+        # ── Fase Commessa ──────────────────────────────────────────────────────
+        st.divider()
+        st.markdown("### 📍 Fase Commessa")
+        fase_commessa = st.radio(
+            "Stato attuale",
+            ["🔵 Pre-cantiere", "🟢 Cantiere in corso", "🔴 Chiusura cantiere"],
+            key="fase_commessa_stato",
+            label_visibility="collapsed",
+        )
+        st.session_state["fase_commessa"] = fase_commessa
+
     return api_key
 
 
@@ -2091,35 +2102,87 @@ def main() -> None:
     ribasso_pct = float(st.session_state.get("ribasso_pct", 0.0))
     importo_netto = importo_base * (1 - ribasso_pct / 100) if importo_base > 0 else 0.0
 
-    # Tabs
-    tab_dashboard, tab_sintesi, tab_checklist, tab_documenti, tab_calendario, \
-    tab_sal_penali, tab_operatori, tab_registri, tab_mappa, tab_pianificazione, \
-    tab_log, tab_guida = st.tabs([
+    # Tabs — nuova struttura DTC (2026-05-23)
+    (
+        tab_dashboard,
+        tab_commessa,
+        tab_sicurezza_apprestamenti,
+        tab_approvvigionamento,
+        tab_calendario,
+        tab_sal_penali,
+        tab_sub,
+        tab_pianificazione,
+        tab_registri,
+        tab_checklist,
+        tab_log,
+    ) = st.tabs([
         "🏠 Dashboard",
-        "📋 Sintesi CSA",
-        "✅ Checklist",
-        "📄 Documenti",
+        "📥 Commessa",
+        "🦺 Sicurezza e Apprestamenti",
+        "📦 Approvvigionamento",
         "📅 Calendario",
         "💰 SAL e Penali",
-        "🏢 Operatori",
+        "🤝 Sub e Subaffidamenti",
+        "📅 Pianificazione Risorse",
         "🗂️ Registri di Cantiere",
-        "🗺️ Mappa Fornitori",
-        "📋 Pianificazione",
+        "✅ Checklist",
         "📚 Log Attività",
-        "❓ Guida",
     ])
 
     with tab_dashboard:
         _render_dashboard(csa_data, details, importo_netto)
 
-    with tab_sintesi:
+    with tab_commessa:
+        st.header("📥 Commessa")
+
+        st.subheader("📋 Capitolato Speciale d'Appalto")
         _render_sintesi(csa_data, importo_netto)
 
-    with tab_checklist:
-        _render_checklist(csa_data, api_key)
+        st.divider()
 
-    with tab_documenti:
-        _render_documenti(csa_data, api_key)
+        st.subheader("📒 Rubrica Contatti")
+        st.info("🔜 In arrivo: rubrica contatti con RUP, DL, CSE, PM, fornitori, subappaltatori")
+
+        st.divider()
+
+        with st.expander("❓ Guida all'uso", expanded=False):
+            _render_guida()
+
+    with tab_sicurezza_apprestamenti:
+        st.header("🦺 Sicurezza e Apprestamenti")
+        st.info("🔜 In arrivo: estrazione automatica apprestamenti da CME (ponteggi, bagni, recinzioni, baracche) con verifica D.Lgs. 81/2008")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📋 Apprestamenti richiesti dal CME")
+            st.caption("Verranno estratti automaticamente dal Computo Metrico")
+        with col2:
+            st.subheader("⚖️ Verifica minimi di legge")
+            st.caption("Confronto con requisiti minimi D.Lgs. 81/2008 — Titolo IV")
+
+    with tab_approvvigionamento:
+        st.header("📦 Approvvigionamento")
+
+        fase_approv = st.radio(
+            "Fase",
+            [
+                "🔍 Pre-cantiere — Estrazione materiali e richieste offerta",
+                "🏗️ Cantiere — Conferma ordini e tracciamento consegne",
+            ],
+            horizontal=True,
+            key="approv_fase",
+        )
+
+        if "Pre-cantiere" in fase_approv:
+            st.info("🔜 In arrivo: estrazione materiali da CME, generazione stralci per fornitori, confronto offerte")
+            _render_documenti(csa_data, api_key)
+        else:
+            st.info("🔜 In arrivo: conferma ordini, tracciamento consegne, verifica quantità ricevute vs ordinate")
+
+        st.divider()
+
+        st.subheader("🗺️ Mappa Fornitori")
+        _render_mappa(csa_data)
 
     with tab_calendario:
         _render_calendario(csa_data, details, importo_netto)
@@ -2141,13 +2204,10 @@ def main() -> None:
         st.subheader("📉 Penali e Revisione Prezzi")
         _render_penali(csa_data, details, importo_netto)
 
-    with tab_operatori:
-        limite_subaffid_10 = importo_netto * 0.10
-        st.info(
-            f"🔒 **Limite Art. 122 D.Lgs. 36/2023**: Subaffidamenti max **€ {limite_subaffid_10:,.0f}** (10% importo netto)",
-            icon="⚠️",
-        )
+    with tab_sub:
+        st.header("🤝 Sub e Subaffidamenti")
 
+        st.subheader("🏗️ Subappalti e Subaffidamenti")
         render_operatori_tab(
             csa_data=csa_data,
             importo_base=importo_netto,
@@ -2155,16 +2215,32 @@ def main() -> None:
             results_dir=RESULTS_DIR,
         )
 
-        # Verifica post-render
-        oe_check = st.session_state.get("operatori_economici", {})
-        subs_check = oe_check.get("subappaltatori", [])
-        tot_subaffid_check = sum(float(s.get("importo", 0) or 0) for s in subs_check if s.get("tipo") == "subaffidamento")
-        if tot_subaffid_check > limite_subaffid_10:
+        st.divider()
+
+        limite_subaffid_10 = importo_netto * 0.10
+        st.info(
+            f"🔒 **Limite Art. 122 D.Lgs. 36/2023**: "
+            f"Subaffidamenti max **€ {limite_subaffid_10:,.0f}** (10% importo netto)"
+        )
+        oe = st.session_state.get("operatori_economici", {})
+        subs = oe.get("subappaltatori", [])
+        tot_subaffid = sum(
+            float(s.get("importo", 0) or 0) for s in subs
+            if s.get("tipo") == "subaffidamento"
+        )
+        if tot_subaffid > limite_subaffid_10:
             st.error(
-                f"❌ **SUPERA LIMITE**: Importo subaffidamenti € {tot_subaffid_check:,.0f}"
-                f" > limite € {limite_subaffid_10:,.0f}",
-                icon="🚨",
+                f"❌ Importo subaffidamenti € {tot_subaffid:,.0f} "
+                f"> limite € {limite_subaffid_10:,.0f}"
             )
+
+    with tab_pianificazione:
+        render_pianificazione_tab(
+            csa_data=csa_data,
+            api_key=api_key,
+            salva_fn=_salva_stato_cantiere,
+            results_dir=RESULTS_DIR,
+        )
 
     with tab_registri:
         render_registri_tab(
@@ -2178,22 +2254,11 @@ def main() -> None:
             include_schede_accettazione=True,
         )
 
-    with tab_mappa:
-        _render_mappa(csa_data)
-
-    with tab_pianificazione:
-        render_pianificazione_tab(
-            csa_data=csa_data,
-            api_key=api_key,
-            salva_fn=_salva_stato_cantiere,
-            results_dir=RESULTS_DIR,
-        )
+    with tab_checklist:
+        _render_checklist(csa_data, api_key)
 
     with tab_log:
         render_log_tab(csa_data=csa_data, salva_fn=_salva_stato_cantiere)
-
-    with tab_guida:
-        _render_guida()
 
 
 if __name__ == "__main__":
