@@ -861,6 +861,7 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
         try:
             import pytesseract  # noqa: F401
             from PIL import Image  # noqa: F401
+            _configura_pytesseract()
             _ocr_ready = True
         except ImportError:
             usa_ocr = False
@@ -961,6 +962,25 @@ def _testo_e_garbled(testo: str, soglia: float = 0.3) -> bool:
     return (non_leggibili / len(testo)) > soglia
 
 
+def _configura_pytesseract() -> None:
+    """Imposta tesseract_cmd e TESSDATA_PREFIX se non già configurati (Windows)."""
+    import os
+    import sys
+    try:
+        import pytesseract
+    except ImportError:
+        return
+    # Windows: percorso standard UB-Mannheim
+    if sys.platform == "win32":
+        win_exe = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.isfile(win_exe):
+            pytesseract.pytesseract.tesseract_cmd = win_exe
+    # TESSDATA_PREFIX: preferisce ~/tessdata se ita.traineddata presente
+    user_tessdata = os.path.join(os.path.expanduser("~"), "tessdata")
+    if os.path.isfile(os.path.join(user_tessdata, "ita.traineddata")):
+        os.environ.setdefault("TESSDATA_PREFIX", user_tessdata)
+
+
 def _estrai_testo_pdf_ocr(pdf_bytes: bytes) -> str:
     """Estrae testo da PDF via OCR (pytesseract) — fallback per font Identity-H.
     Rasterizza ogni pagina a 200 DPI e applica OCR in italiano."""
@@ -970,6 +990,7 @@ def _estrai_testo_pdf_ocr(pdf_bytes: bytes) -> str:
         import pytesseract
         from PIL import Image
 
+        _configura_pytesseract()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         testo_completo = []
         for n_pag in range(len(doc)):
