@@ -39,6 +39,7 @@ from modules.registri_tab import render_registri_tab, _render_contabilita_sal
 from modules.pianificazione_tab import render_pianificazione_tab
 from modules.sicurezza_apprestamenti_tab import render_sicurezza_apprestamenti_tab
 from modules.approvvigionamento_tab import render_approvvigionamento_tab
+from modules.rubrica_tab import render_rubrica_tab
 
 # ── Costanti ───────────────────────────────────────────────────────────────────
 RESULTS_DIR = pathlib.Path("results")
@@ -177,6 +178,7 @@ def _salva_analisi() -> None:
     payload["_varianti_proroghe"] = st.session_state.get("_varianti_proroghe", [])
     payload["_apprestamenti_sicurezza"] = st.session_state.get("apprestamenti_sicurezza", [])
     payload["_approv_voci_cme"] = st.session_state.get("approv_voci_cme", [])
+    payload["_rubrica_contatti"] = st.session_state.get("rubrica_contatti", {})
 
     # pianificazione
     piano = st.session_state.get("pianificazione")
@@ -229,6 +231,7 @@ def _carica_analisi(percorso: pathlib.Path) -> None:
     st.session_state._varianti_proroghe = payload.pop("_varianti_proroghe", [])
     st.session_state["apprestamenti_sicurezza"] = payload.pop("_apprestamenti_sicurezza", [])
     st.session_state["approv_voci_cme"] = payload.pop("_approv_voci_cme", [])
+    st.session_state["rubrica_contatti"] = payload.pop("_rubrica_contatti", {})
 
     piano = payload.pop("_pianificazione", None)
     if piano:
@@ -1029,6 +1032,21 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
     if _consegne_attese:
         st.warning(
             f"🚚 **{len(_consegne_attese)} consegne** in attesa — verifica stato in Approvvigionamento"
+        )
+
+    # Alert rubrica incompleta
+    _rubrica = st.session_state.get("rubrica_contatti", {})
+    _ruoli_critici_labels = {
+        "stazione_appaltante": "Stazione Appaltante",
+        "impresa": "Impresa Appaltatrice",
+    }
+    _mancanti = [
+        label for chiave, label in _ruoli_critici_labels.items()
+        if not _rubrica.get(chiave)
+    ]
+    if _mancanti:
+        st.caption(
+            f"📒 Rubrica incompleta: mancano contatti per {', '.join(_mancanti)}"
         )
 
     # Riepilogo rapido
@@ -2180,8 +2198,7 @@ def main() -> None:
 
         st.divider()
 
-        st.subheader("📒 Rubrica Contatti")
-        st.info("🔜 In arrivo: rubrica contatti con RUP, DL, CSE, PM, fornitori, subappaltatori")
+        render_rubrica_tab(salva_fn=_salva_stato_cantiere)
 
         st.divider()
 
