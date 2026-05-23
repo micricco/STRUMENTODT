@@ -13,6 +13,99 @@ dell'impresa appaltatrice, che gestisce appalti pubblici italiani regolati da
 
 ---
 
+## 📚 Quadro Normativo di Riferimento
+
+### 🏛️ APPALTI PUBBLICI — PRIMARIE
+- **D.Lgs. 36/2023** + correttivo **D.Lgs. 209/2024** — Codice dei Contratti Pubblici (vigente dal 01/07/2023, aggiornato 31/12/2024)
+- **DM 49/2018** — Direzione Lavori, contabilità, SAL, collaudo, riserve
+- **Allegato II.12 D.Lgs. 36/2023** — Norme tecniche esecuzione contratti
+- **L. 136/2010** — Tracciabilità flussi finanziari (CIG obbligatorio)
+
+### 📋 ARTICOLI CHIAVE D.LGS. 36/2023
+- **Art. 60** — Revisione prezzi (franchigia 5%, clausole revisionali)
+- **Art. 113** — Penali per ritardo (‰ giornaliero, cap massimo)
+- **Art. 119** — Subappalto (limite 30% importo contrattuale)
+- **Art. 120** — Varianti in corso d'opera e riserve
+- **Art. 121** — Riserve: iscrizione tempestiva, esplicitazione 15gg, risposta DL 30gg
+- **Art. 122** — Subaffidamenti (limite 10% importo contrattuale)
+- **Art. 125** — Anticipazione contrattuale (max 20%, recupero proporzionale su ogni SAL)
+
+### 🦺 SICUREZZA SUL LAVORO
+- **D.Lgs. 81/2008** (TUSL) — Testo Unico Sicurezza, Titolo IV Cantieri (Artt. 88-104)
+- **D.Lgs. 106/2009** — Correttivo TUSL
+- **DPR 222/2003** — Contenuti minimi PSC
+- **Art. 89 D.Lgs. 81/2008** — Definizioni: CSP, CSE, Responsabile Lavori
+- **Art. 92 D.Lgs. 81/2008** — Obblighi coordinatore sicurezza in esecuzione
+- **Art. 97 D.Lgs. 81/2008** — Obblighi datore lavoro impresa affidataria (DTC)
+
+### 🌿 CRITERI AMBIENTALI MINIMI (CAM)
+- **DM 23/06/2022** — CAM Edilizia (prodotti, materiali, requisiti ambientali)
+- Applicazione obbligatoria negli appalti pubblici (Art. 57 D.Lgs. 36/2023)
+- Schede accettazione: spunta CAM obbligatoria per materiali soggetti
+
+### 🏗️ NORME TECNICHE COSTRUZIONI
+- **DM 17/01/2018** (NTC 2018) — Norme Tecniche Costruzioni
+- **Circ. MIT 21/01/2019 n.7** — Istruzioni applicazione NTC 2018
+- **DPR 380/2001** — Testo Unico Edilizia
+
+### 💰 CONTABILITÀ LAVORI (DM 49/2018)
+- **Art. 14 DM 49/2018** — Registro di contabilità
+- **Art. 15 DM 49/2018** — Libretto delle misure
+- **Art. 20 DM 49/2018** — SAL: cadenza e contenuti minimi
+- **Art. 23 DM 49/2018** — Conto finale lavori
+- **Art. 25 DM 49/2018** — Certificato di regolare esecuzione
+
+### 🔥 ANTINCENDIO E IMPIANTI
+- **DPR 151/2011** — Regolamento prevenzione incendi
+- **DM 3/8/2015** — Codice Prevenzione Incendi (CPI)
+- **DM 37/2008** — Impianti tecnologici negli edifici
+
+### 🌍 AMBIENTE
+- **D.Lgs. 152/2006** (Codice Ambiente) — Rifiuti da C&D
+- **DM 69/2018** — End of Waste terre e rocce da scavo
+
+### 🛡️ ANTIMAFIA E TRASPARENZA
+- **D.Lgs. 159/2011** — Codice Antimafia (DURC, SOA, white list)
+- **D.Lgs. 33/2013** — Trasparenza PA
+- **L. 136/2010** — Tracciabilità flussi (CIG su ogni pagamento)
+
+---
+
+## 🤖 Skill Normative Claude Code
+
+Le seguenti skill sono installate in `.claude/skills/` (progetto) e `~/.claude/skills/` (globale):
+
+| Skill | Norma | Comando |
+|-------|-------|---------|
+| codice-appalti | D.Lgs. 36/2023 + correttivo 2024 | `/codice-appalti` |
+| dm49-direzione-lavori | DM 49/2018 | `/dm49-direzione-lavori` |
+| sicurezza-cantieri | D.Lgs. 81/2008 Titolo IV | `/sicurezza-cantieri` |
+| tracciabilita-cig | L. 136/2010 | `/tracciabilita-cig` |
+| book-to-skill | Converte PDF normativi in skill | `/book-to-skill ~/Downloads/norma.pdf nome` |
+
+---
+
+## ⚙️ Regole per Claude Code — Conformità Normativa
+
+Quando scrivi o modifichi codice per STRUMENTODT:
+
+1. **Cita la norma nei commenti** quando hardcodi un limite legale (es. `# Art. 125 D.Lgs. 36/2023`)
+2. **Limiti numerici con fonte normativa**:
+   - Subappalto: max **30%** importo netto (Art. 119 D.Lgs. 36/2023)
+   - Subaffidamenti: max **10%** importo del singolo subappalto (Art. 122 D.Lgs. 36/2023)
+   - Anticipazione: max **20%** importo contrattuale netto (Art. 125 D.Lgs. 36/2023)
+   - Riserve — iscrizione: **15 giorni** dall'evento generatore (Art. 121 D.Lgs. 36/2023)
+   - Riserve — esplicitazione: **15 giorni** dalla firma atto contabile (Art. 121 D.Lgs. 36/2023)
+   - Riserve — risposta DL: **30 giorni** dall'esplicitazione (Art. 121 D.Lgs. 36/2023)
+   - Penale massima: cap definito nel CSA, tipicamente **10%** importo netto (Art. 113 D.Lgs. 36/2023)
+   - Revisione prezzi — franchigia: **5%** (Art. 60 D.Lgs. 36/2023; correttivo 2024: 3% per alcune categorie)
+   - Collaudo/CRE: entro **6 mesi** dall'ultimazione (Allegato II.14 D.Lgs. 36/2023)
+   - Pagamento SAL: entro **30 giorni** dal certificato di pagamento (Art. 108 D.Lgs. 36/2023)
+3. **Prima di ogni nuova funzionalità**: verifica la conformità normativa usando le skill `/codice-appalti` o `/dm49-direzione-lavori`
+4. **Valori estratti dal CSA** hanno sempre precedenza sui default normativi (il CSA può restringere ma non ampliare i limiti di legge)
+
+---
+
 ## Stato attuale — Sessione 2026-05-09 serale
 
 ### ✅ Completate in questa sessione (serale)
