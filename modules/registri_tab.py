@@ -100,6 +100,8 @@ def _init_registri() -> None:
     for chiave in ("riserve", "verbali", "non_conformita", "ordini_servizio", "contabilita_sal", "schede_accettazione"):
         if chiave not in st.session_state.registri:
             st.session_state.registri[chiave] = []
+    if "anticipazione_sal" not in st.session_state.registri:
+        st.session_state.registri["anticipazione_sal"] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1865,6 +1867,91 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
 
     st.divider()
 
+    # ── Anticipazione Contrattuale (Art. 125 D.Lgs. 36/2023) ─────────────────
+    st.subheader("💶 Anticipazione Contrattuale (Art. 125 D.Lgs. 36/2023)")
+
+    ant = st.session_state.registri.get("anticipazione_sal", {})
+    ant_ricevuta = st.toggle(
+        "Anticipazione ricevuta",
+        value=bool(ant.get("ricevuta", False)),
+        key="ant_ricevuta",
+    )
+
+    if ant_ricevuta:
+        col_ant1, col_ant2, col_ant3 = st.columns(3)
+        default_importo_ant = float(ant["importo"]) if ant.get("importo") else (importo_netto * 0.20 if importo_netto > 0 else 0.0)
+        with col_ant1:
+            importo_ant = st.number_input(
+                "Importo anticipazione (€)",
+                min_value=0.0,
+                value=default_importo_ant,
+                step=1000.0,
+                format="%.2f",
+                key="ant_importo",
+                help="Massimo 20% importo contrattuale (Art. 125 D.Lgs. 36/2023)",
+            )
+            perc_ant_calc = (importo_ant / importo_netto * 100) if importo_netto > 0 else 0.0
+            if perc_ant_calc > 20.0:
+                st.error(f"❌ Supera il 20% massimo! (attuale: {perc_ant_calc:.1f}%)")
+            else:
+                st.caption(f"✅ {perc_ant_calc:.1f}% dell'importo contrattuale")
+        with col_ant2:
+            data_ant_default = None
+            if ant.get("data_erogazione"):
+                try:
+                    data_ant_default = date.fromisoformat(str(ant["data_erogazione"]))
+                except (ValueError, TypeError):
+                    pass
+            data_ant = st.date_input(
+                "Data erogazione",
+                value=data_ant_default or date.today(),
+                key="ant_data",
+            )
+        with col_ant3:
+            tot_recuperato_ant = sum(float(s.get("recupero_anticipazione", 0)) for s in sal_list)
+            residuo_ant = max(0.0, importo_ant - tot_recuperato_ant)
+            st.metric("Recuperato", _formatta_importo(tot_recuperato_ant))
+            st.metric("Residuo da recuperare", _formatta_importo(residuo_ant))
+
+        if st.button("💾 Salva anticipazione", key="btn_salva_ant"):
+            st.session_state.registri["anticipazione_sal"] = {
+                "ricevuta": True,
+                "importo": importo_ant,
+                "data_erogazione": str(data_ant),
+                "percentuale": perc_ant_calc,
+                "totale_recuperato": tot_recuperato_ant,
+                "residuo": residuo_ant,
+            }
+            aggiungi_log(
+                "Anticipazione contrattuale salvata",
+                f"{_formatta_importo(importo_ant)} ({perc_ant_calc:.1f}%) — erogata {data_ant}",
+                tab="Registri",
+            )
+            salva_fn()
+            st.success("✅ Anticipazione salvata")
+            st.rerun()
+
+        if importo_ant > 0:
+            perc_rec_vis = min(tot_recuperato_ant / importo_ant * 100, 100.0)
+            st.caption(f"Recupero anticipazione: {perc_rec_vis:.1f}%")
+            st.progress(perc_rec_vis / 100)
+    else:
+        if ant.get("ricevuta"):
+            if st.button("🔄 Rimuovi anticipazione", key="btn_rimuovi_ant"):
+                st.session_state.registri["anticipazione_sal"] = {}
+                salva_fn()
+                st.rerun()
+
+    st.divider()
+
+    # Leggi anticipazione per calcolo recupero nel form
+    _ant = st.session_state.registri.get("anticipazione_sal", {})
+    _ant_attiva = bool(_ant.get("ricevuta", False))
+    _ant_importo = float(_ant.get("importo", 0))
+    _ant_percentuale = float(_ant.get("percentuale", 0))
+    _tot_rec_fin_ora = sum(float(s.get("recupero_anticipazione", 0)) for s in sal_list)
+    _residuo_ant_corrente = max(0.0, _ant_importo - _tot_rec_fin_ora)
+
     # ── Form nuovo SAL ────────────────────────────────────────────────────────
     with st.expander("➕ Nuovo SAL", expanded=False):
         prossimo_num_sal = len(sal_list) + 1
@@ -1895,7 +1982,7 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                     value=0.0,
                     step=100.0,
                     format="%.2f",
-                    help="Ritenuta di garanzia e altre trattenute. Importo netto = Lordo − Ritenute.",
+                    help="Ritenuta di garanzia e altre trattenute.",
                     key="reg_sal_new_ritenute",
                 )
                 stato_pag_sal = st.selectbox("Stato pagamento", _STATI_SAL, key="reg_sal_new_stato")
@@ -1906,11 +1993,36 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                 )
             note_sal_new = st.text_area("Note", height=60, key="reg_sal_new_note")
 
+            # Calcolo recupero anticipazione
+            if _ant_attiva and _ant_importo > 0 and _residuo_ant_corrente > 0:
+                recupero_sal_calc = importo_lordo_sal * (_ant_percentuale / 100)
+                if recupero_sal_calc > _residuo_ant_corrente:
+                    recupero_sal_calc = _residuo_ant_corrente
+                    st.warning(
+                        f"⚠️ Recupero ridotto a {_formatta_importo(recupero_sal_calc)} "
+                        f"(residuo anticipazione esaurito dopo questo SAL)"
+                    )
+                elif importo_lordo_sal > 0:
+                    st.info(
+                        f"💶 **Recupero anticipazione su questo SAL**: {_formatta_importo(recupero_sal_calc)} "
+                        f"({_ant_percentuale:.1f}% del lordo)"
+                    )
+            elif _ant_attiva and _residuo_ant_corrente <= 0:
+                st.success("✅ Anticipazione completamente recuperata — nessun recupero su questo SAL")
+                recupero_sal_calc = 0.0
+            else:
+                recupero_sal_calc = 0.0
+
             # Preview importo netto calcolato
-            importo_netto_sal_calc = max(0.0, importo_lordo_sal - ritenute_sal)
+            importo_netto_sal_calc = max(0.0, importo_lordo_sal - ritenute_sal - recupero_sal_calc)
+            parti_netto = [f"lordo {_formatta_importo(importo_lordo_sal)}"]
+            if recupero_sal_calc > 0:
+                parti_netto.append(f"recupero ant. {_formatta_importo(recupero_sal_calc)}")
+            if ritenute_sal > 0:
+                parti_netto.append(f"ritenute {_formatta_importo(ritenute_sal)}")
             st.info(
                 f"**Importo netto calcolato:** {_formatta_importo(importo_netto_sal_calc)} "
-                f"(lordo {_formatta_importo(importo_lordo_sal)} − ritenute {_formatta_importo(ritenute_sal)})"
+                f"({' − '.join(parti_netto)})"
             )
 
             submitted_sal = st.form_submit_button("💾 Aggiungi SAL", type="primary")
@@ -1923,6 +2035,7 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                         "numero": int(numero_sal),
                         "data_emissione": data_em_sal.isoformat(),
                         "importo_lordo": importo_lordo_sal,
+                        "recupero_anticipazione": recupero_sal_calc,
                         "importo_netto": importo_netto_sal_calc,
                         "ritenute": ritenute_sal,
                         "stato_pagamento": stato_pag_sal,
@@ -1932,7 +2045,9 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                     st.session_state.registri["contabilita_sal"].append(nuovo_sal)
                     aggiungi_log(
                         "SAL aggiunto",
-                        f"SAL n.{numero_sal} — lordo {_formatta_importo(importo_lordo_sal)} — {stato_pag_sal}",
+                        f"SAL n.{numero_sal} — lordo {_formatta_importo(importo_lordo_sal)}"
+                        + (f" — recupero ant. {_formatta_importo(recupero_sal_calc)}" if recupero_sal_calc > 0 else "")
+                        + f" — {stato_pag_sal}",
                         tab="Registri",
                     )
                     aggiungi_al_diario(
@@ -1953,12 +2068,39 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
 
     sal_ordinati = sorted(sal_list, key=lambda x: x.get("numero", 0))
 
+    # Tabella riepilogativa
+    df_sal = pd.DataFrame([{
+        "N°": s.get("numero", "—"),
+        "Data": s.get("data_emissione", "—"),
+        "Lordo (€)": f"€ {float(s.get('importo_lordo', 0) or 0):,.2f}",
+        "Rec. Ant. (€)": f"€ {float(s.get('recupero_anticipazione', 0) or 0):,.2f}",
+        "Ritenute (€)": f"€ {float(s.get('ritenute', 0) or 0):,.2f}",
+        "Netto (€)": f"€ {float(s.get('importo_netto', 0) or 0):,.2f}",
+        "Stato": s.get("stato_pagamento", "—").upper(),
+    } for s in sal_ordinati])
+    st.dataframe(df_sal, use_container_width=True, hide_index=True)
+
+    # Totali
+    tot_lordo_sal = sum(float(s.get("importo_lordo", 0) or 0) for s in sal_list)
+    tot_rec_sal = sum(float(s.get("recupero_anticipazione", 0) or 0) for s in sal_list)
+    tot_netto_sal = sum(float(s.get("importo_netto", 0) or 0) for s in sal_list)
+    rimasto_sal = max(0.0, importo_netto - tot_netto_sal) if importo_netto > 0 else 0.0
+
+    col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+    col_t1.metric("Totale lordo SAL", _formatta_importo(tot_lordo_sal))
+    col_t2.metric("Totale recupero ant.", _formatta_importo(tot_rec_sal))
+    col_t3.metric("Totale netto SAL", _formatta_importo(tot_netto_sal))
+    col_t4.metric("Residuo contratto", _formatta_importo(rimasto_sal))
+
+    st.divider()
+
     for sal in sal_ordinati:
         salid = sal.get("id", 0)
         numero_sal_vis = sal.get("numero", salid)
         stato_pag_vis = sal.get("stato_pagamento", "emesso")
         lordo_vis = sal.get("importo_lordo", 0.0) or 0.0
         netto_vis = sal.get("importo_netto", 0.0) or 0.0
+        rec_vis = sal.get("recupero_anticipazione", 0.0) or 0.0
         idx_sal = next((i for i, x in enumerate(sal_list) if x.get("id") == salid), None)
 
         badge_sal = {"emesso": "📄", "in_verifica": "🔍", "pagato": "✅"}.get(stato_pag_vis, "💰")
@@ -1976,6 +2118,8 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                 st.markdown(f"**Ritenute:** {_formatta_importo(sal.get('ritenute', 0.0) or 0.0)}")
             with col_salv2:
                 st.markdown(f"**Importo netto:** {_formatta_importo(netto_vis)}")
+                if rec_vis > 0:
+                    st.markdown(f"**Recupero anticipazione:** {_formatta_importo(rec_vis)}")
                 st.markdown(f"**Stato pagamento:** {stato_pag_vis}")
                 if sal.get("data_pagamento"):
                     st.markdown(f"**Data pagamento:** {sal.get('data_pagamento')}")
@@ -2015,11 +2159,25 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                             new_data_pag_sal = st.date_input("Data pagamento", value=data_pag_sal_cur, key=f"reg_sal_{salid}_e_data_pag")
                         new_note_sal = st.text_area("Note", value=sal.get("note", ""), height=60, key=f"reg_sal_{salid}_e_note")
                         if st.form_submit_button("💾 Salva modifiche"):
-                            new_netto_sal = max(0.0, new_lordo_sal - new_ritenute_sal)
+                            # Ricalcola recupero anticipazione mantenendo la percentuale originale
+                            _ant_edit = st.session_state.registri.get("anticipazione_sal", {})
+                            _ant_pct_edit = float(_ant_edit.get("percentuale", 0))
+                            _ant_imp_edit = float(_ant_edit.get("importo", 0))
+                            _ant_attiva_edit = bool(_ant_edit.get("ricevuta", False))
+                            if _ant_attiva_edit and _ant_imp_edit > 0:
+                                # Somma recupero degli altri SAL (escluso questo)
+                                _altri_sal = [s for s in sal_list if s.get("id") != salid]
+                                _rec_altri = sum(float(s.get("recupero_anticipazione", 0)) for s in _altri_sal)
+                                _residuo_edit = max(0.0, _ant_imp_edit - _rec_altri)
+                                new_rec_sal = min(new_lordo_sal * (_ant_pct_edit / 100), _residuo_edit)
+                            else:
+                                new_rec_sal = float(sal.get("recupero_anticipazione", 0) or 0)
+                            new_netto_sal = max(0.0, new_lordo_sal - new_ritenute_sal - new_rec_sal)
                             st.session_state.registri["contabilita_sal"][idx_sal].update({
                                 "numero": int(new_num_sal),
                                 "data_emissione": new_data_em_sal.isoformat(),
                                 "importo_lordo": new_lordo_sal,
+                                "recupero_anticipazione": new_rec_sal,
                                 "importo_netto": new_netto_sal,
                                 "ritenute": new_ritenute_sal,
                                 "stato_pagamento": new_stato_sal,

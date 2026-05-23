@@ -951,6 +951,23 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
             else:
                 st.warning(f"⚠️ Riserva **{_rid}** ({_lav_short}): esplicitare entro **{_gg} giorni**")
 
+    # Alert anticipazione contrattuale
+    _anticipazione = st.session_state.get("registri", {}).get("anticipazione_sal", {})
+    if _anticipazione.get("ricevuta"):
+        _ant_residuo = float(_anticipazione.get("residuo", 0) or 0)
+        _tot_rec_ant = sum(
+            float(s.get("recupero_anticipazione", 0) or 0)
+            for s in st.session_state.get("registri", {}).get("contabilita_sal", [])
+        )
+        _ant_imp = float(_anticipazione.get("importo", 0) or 0)
+        _residuo_reale = max(0.0, _ant_imp - _tot_rec_ant)
+        if _residuo_reale > 0:
+            st.warning(
+                f"💶 Anticipazione Art. 125: residuo **{_residuo_reale:,.2f} €** ancora da recuperare sui SAL"
+            )
+        else:
+            st.success("✅ Anticipazione contrattuale (Art. 125) completamente recuperata")
+
     # Riepilogo rapido
     st.divider()
     col_r1, col_r2, col_r3 = st.columns(3)
