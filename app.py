@@ -782,7 +782,7 @@ def _esegui_analisi(pdf_bytes: bytes, api_key: str) -> None:
         st.session_state["csa_ocr_usato"] = stats.get("ocr_usato", False)
         barra.progress(0.30, text="Conteggio token…")
 
-        n_token = conta_token_api(testo_filtrato, api_key)
+        n_token = conta_token_api(testo_filtrato, api_key, pdf_bytes)
         costo_est = n_token * _COSTO_INPUT_HAIKU
         barra.progress(0.50, text=f"Token: {n_token:,} (~${costo_est:.3f}) — Analisi in corso…")
 

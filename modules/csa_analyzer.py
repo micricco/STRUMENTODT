@@ -853,9 +853,10 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     n_totale = len(doc)
 
-    # Rileva testo garbled (font CID Identity-H senza mappa Unicode)
-    testo_campione = doc[0].get_text() if n_totale > 0 else ""
-    usa_ocr = _testo_e_garbled(testo_campione)
+    # Controlla le prime 3 pagine individualmente con any() — il campione combinato
+    # può scendere sotto soglia se le pagine successive hanno solo spazi bianchi.
+    n_campione = min(3, n_totale)
+    usa_ocr = any(_testo_e_garbled(doc[i].get_text()) for i in range(n_campione))
     _ocr_ready = False
     if usa_ocr:
         try:
@@ -917,11 +918,26 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
 
 
 @st.cache_data(show_spinner=False)
-def conta_token_api(testo: str, api_key: str) -> int:
-    """Conta i token esatti del testo filtrato (Smart Extract) via API count_tokens.
-    Fallback a stima locale se l'API non è disponibile."""
+def conta_token_api(testo: str, api_key: str, pdf_bytes: bytes | None = None) -> int:
+    """Conta i token del testo filtrato via API count_tokens.
+    Se testo è garbled (font Identity-H), usa OCR su pdf_bytes — stesso flusso
+    di _estrai_testo_pdf() — così il conteggio riflette il testo reale analizzato."""
+    # Stesso flusso di _estrai_testo_pdf(): se garbled, usa testo OCR filtrato.
+    # Usa _estrai_pagine_rilevanti (già cached con OCR corretto) prima di full-OCR.
+    testo_da_contare = testo
+    if _testo_e_garbled(testo) and pdf_bytes is not None:
+        testo_filtrato_ocr, _ = _estrai_pagine_rilevanti(pdf_bytes)
+        if testo_filtrato_ocr and not _testo_e_garbled(testo_filtrato_ocr):
+            testo_da_contare = testo_filtrato_ocr
+        else:
+            # Fallback: OCR completo (tutte le pagine, più lento)
+            testo_ocr = _estrai_testo_pdf_ocr(pdf_bytes)  # cached
+            if testo_ocr and not _testo_e_garbled(testo_ocr):
+                testo_da_contare = testo_ocr
+
     if not api_key:
-        return len(testo) // 4
+        return len(testo_da_contare) // 4
+
     client = anthropic.Anthropic(api_key=api_key)
     stats = st.session_state.get("_smart_extract_stats", {})
     if stats:
@@ -942,12 +958,12 @@ def conta_token_api(testo: str, api_key: str) -> int:
             model=MODEL_FAST,
             messages=[{
                 "role": "user",
-                "content": f"{EXTRACTION_PROMPT}\n\nTESTO DEL CSA:\n{testo}",
+                "content": f"{EXTRACTION_PROMPT}\n\nTESTO DEL CSA:\n{testo_da_contare}",
             }],
         )
         return resp.input_tokens
     except Exception:
-        return len(testo) // 4
+        return len(testo_da_contare) // 4
 
 
 def _testo_e_garbled(testo: str, soglia: float = 0.3) -> bool:
@@ -981,9 +997,10 @@ def _configura_pytesseract() -> None:
         os.environ.setdefault("TESSDATA_PREFIX", user_tessdata)
 
 
+@st.cache_data(show_spinner=False)
 def _estrai_testo_pdf_ocr(pdf_bytes: bytes) -> str:
     """Estrae testo da PDF via OCR (pytesseract) — fallback per font Identity-H.
-    Rasterizza ogni pagina a 200 DPI e applica OCR in italiano."""
+    Rasterizza ogni pagina a 200 DPI e applica OCR in italiano. Risultato cached."""
     try:
         import io
         import fitz
