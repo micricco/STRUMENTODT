@@ -690,6 +690,13 @@ def _render_sidebar() -> str:
                 colore_conf = "🟢" if conf_score >= 80 else ("🟡" if conf_score >= 60 else "🔴")
                 st.metric("Qualità estrazione", f"{colore_conf} {conf_score}/100")
 
+            if st.session_state.get("csa_ocr_usato"):
+                st.warning(
+                    "⚠️ **OCR attivato**: il PDF usa font non standard (Identity-H). "
+                    "L'estrazione potrebbe essere meno precisa. "
+                    "Verifica manualmente i campi critici (importo, penali, SAL)."
+                )
+
             warnings_val = csa_data.get("_warnings_validazione", [])
             if warnings_val:
                 with st.expander(f"⚠️ {len(warnings_val)} anomalie rilevate", expanded=False):
@@ -772,6 +779,7 @@ def _esegui_analisi(pdf_bytes: bytes, api_key: str) -> None:
     try:
         testo_filtrato, stats = _estrai_pagine_rilevanti(pdf_bytes)
         st.session_state._smart_extract_stats = stats
+        st.session_state["csa_ocr_usato"] = stats.get("ocr_usato", False)
         barra.progress(0.30, text="Conteggio token…")
 
         n_token = conta_token_api(testo_filtrato, api_key)

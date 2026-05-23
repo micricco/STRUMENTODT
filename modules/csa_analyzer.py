@@ -853,13 +853,42 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     n_totale = len(doc)
 
+    # Rileva testo garbled (font CID Identity-H senza mappa Unicode)
+    testo_campione = doc[0].get_text() if n_totale > 0 else ""
+    usa_ocr = _testo_e_garbled(testo_campione)
+    _ocr_ready = False
+    if usa_ocr:
+        try:
+            import pytesseract  # noqa: F401
+            from PIL import Image  # noqa: F401
+            _ocr_ready = True
+        except ImportError:
+            usa_ocr = False
+
     pagine_rilevanti: set[int] = set()
     pagine_per_categoria: dict[str, list[int]] = {cat: [] for cat in KEYWORDS}
+    testi_pagine: dict[int, str] = {}  # cache per evitare doppia lettura
 
     for n_pag, pagina in enumerate(doc):
-        testo_pag = pagina.get_text().lower()
+        if usa_ocr and _ocr_ready:
+            try:
+                import io
+                import pytesseract
+                from PIL import Image
+                mat = fitz.Matrix(200 / 72, 200 / 72)
+                pix = pagina.get_pixmap(matrix=mat)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                testo_pag = pytesseract.image_to_string(img, lang="ita", config="--psm 1 --oem 3")
+            except Exception:
+                testo_pag = pagina.get_text()
+        else:
+            testo_pag = pagina.get_text()
+
+        testi_pagine[n_pag] = testo_pag
+        testo_pag_lower = testo_pag.lower()
+
         for categoria, keywords in KEYWORDS.items():
-            if any(kw.lower() in testo_pag for kw in keywords):
+            if any(kw.lower() in testo_pag_lower for kw in keywords):
                 pagine_rilevanti.add(n_pag)
                 if n_pag > 0:
                     pagine_rilevanti.add(n_pag - 1)
@@ -870,7 +899,7 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
     testo_filtrato = ""
     for n_pag in sorted(pagine_rilevanti):
         testo_filtrato += f"\n\n--- PAGINA {n_pag + 1} ---\n"
-        testo_filtrato += doc[n_pag].get_text()
+        testo_filtrato += testi_pagine.get(n_pag, doc[n_pag].get_text())
 
     doc.close()
 
@@ -880,6 +909,7 @@ def _estrai_pagine_rilevanti(pdf_bytes: bytes) -> tuple[str, dict]:
         "pagine_per_categoria": {
             cat: pags for cat, pags in pagine_per_categoria.items() if pags
         },
+        "ocr_usato": usa_ocr and _ocr_ready,
     }
 
     return testo_filtrato, stats
@@ -917,6 +947,44 @@ def conta_token_api(testo: str, api_key: str) -> int:
         return resp.input_tokens
     except Exception:
         return len(testo) // 4
+
+
+def _testo_e_garbled(testo: str, soglia: float = 0.3) -> bool:
+    """Rileva testo garbled da font CID Identity-H senza mappa Unicode.
+    Conta caratteri non ASCII o non stampabili: se > soglia (30%) → garbled."""
+    if not testo or len(testo) < 100:
+        return True
+    non_leggibili = sum(
+        1 for c in testo
+        if ord(c) > 127 or (ord(c) < 32 and c not in "\n\t\r ")
+    )
+    return (non_leggibili / len(testo)) > soglia
+
+
+def _estrai_testo_pdf_ocr(pdf_bytes: bytes) -> str:
+    """Estrae testo da PDF via OCR (pytesseract) — fallback per font Identity-H.
+    Rasterizza ogni pagina a 200 DPI e applica OCR in italiano."""
+    try:
+        import io
+        import fitz
+        import pytesseract
+        from PIL import Image
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        testo_completo = []
+        for n_pag in range(len(doc)):
+            pagina = doc[n_pag]
+            mat = fitz.Matrix(200 / 72, 200 / 72)
+            pix = pagina.get_pixmap(matrix=mat)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            testo_pag = pytesseract.image_to_string(img, lang="ita", config="--psm 1 --oem 3")
+            testo_completo.append(f"\n\n--- PAGINA {n_pag + 1} ---\n{testo_pag}")
+        doc.close()
+        return "\n".join(testo_completo)
+    except ImportError:
+        return ""
+    except Exception:
+        return ""
 
 
 def _estrai_testo_pdf_fallback(pdf_bytes: bytes) -> str:
@@ -962,11 +1030,19 @@ def _estrai_testo_pdf_ottimizzato(pdf_bytes: bytes) -> str:
 
 
 def _estrai_testo_pdf(pdf_bytes: bytes) -> str:
-    """Estrae il testo dal PDF: usa pymupdf4llm se disponibile, altrimenti PyMuPDF grezzo."""
+    """Estrae il testo dal PDF con fallback OCR per font Identity-H garbled."""
     try:
-        return _estrai_testo_pdf_ottimizzato(pdf_bytes)
+        testo = _estrai_testo_pdf_ottimizzato(pdf_bytes)
     except Exception:
-        return _estrai_testo_pdf_fallback(pdf_bytes)
+        testo = _estrai_testo_pdf_fallback(pdf_bytes)
+
+    if _testo_e_garbled(testo):
+        testo_ocr = _estrai_testo_pdf_ocr(pdf_bytes)
+        if testo_ocr and not _testo_e_garbled(testo_ocr):
+            return testo_ocr
+        return testo if testo else _estrai_testo_pdf_fallback(pdf_bytes)
+
+    return testo
 
 
 def _parse_json_clean(raw: str) -> dict:
