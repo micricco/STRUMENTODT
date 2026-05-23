@@ -69,7 +69,7 @@ DEMO_CSA_DATA = {
     "collaudo_giorni": 180,
     "importo_oneri_sicurezza": 27000.0,
     # ── Subappalto & Subaffidamento ───────────────────────────────────────────
-    "subappalto_percentuale_massima": 30.0,
+    "subappalto_percentuale_massima": 25.0,  # demo: CSA fissa un limite del 25%
     "subappalto_categorie_vietate": ["OG3 — categoria prevalente"],
     "subappalto_autorizzazione_richiesta": True,
     "subappalto_qualificazione_richiesta": True,

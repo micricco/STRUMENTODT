@@ -45,7 +45,7 @@ EXTRACTION_PROMPT = """Sei un esperto di appalti pubblici italiani (D.Lgs. 36/20
   "collaudo_giorni": intero o null,
   "importo_oneri_sicurezza": float o null,
   "anticipazione_percentuale": percentuale anticipazione sull'importo contrattuale (es. 20.0). null se non indicata esplicitamente (si applica il default 20% Art. 125 D.Lgs. 36/2023),
-  "subappalto_percentuale_massima": percentuale massima subappaltabile come float (es. 30.0) o null se non indicata,
+  "subappalto_percentuale_massima": percentuale massima subappaltabile ESPLICITAMENTE indicata nel CSA come float (es. 25.0); null se non indicata — il D.Lgs. 36/2023 non fissa un limite fisso,
   "subappalto_categorie_vietate": ["lista codici SOA o lavorazioni non subappaltabili"] o lista vuota [],
   "subappalto_autorizzazione_richiesta": true se è richiesta autorizzazione esplicita della SA, false altrimenti,
   "subappalto_qualificazione_richiesta": true se il subappaltatore deve possedere qualificazione SOA, false altrimenti,
@@ -133,7 +133,7 @@ cup: il Codice Unico di Progetto ha ESATTAMENTE 15 caratteri alfanumerici. Forma
 
 anticipazione_percentuale: percentuale di anticipazione sull'importo contrattuale netto (al netto del ribasso) prevista dal CSA o dal contratto. Il limite legale è 20% (Art. 125 D.Lgs. 36/2023); alcune SA prevedono percentuali inferiori (es. 10%, 15%). null se non indicata esplicitamente.
 
-subappalto_percentuale_massima: percentuale massima subappaltabile indicata nel CSA (art.119 D.Lgs.36/2023). Il limite legale di default è 30%; se il CSA prevede una percentuale diversa (superiore o inferiore) indicarla. null se non esplicitamente indicata.
+subappalto_percentuale_massima: percentuale massima subappaltabile indicata ESPLICITAMENTE nel CSA (art.119 D.Lgs.36/2023). ATTENZIONE: il D.Lgs. 36/2023 ha eliminato il limite fisso del 30% presente nel vecchio D.Lgs. 50/2016 — non esiste più un default di legge. Restituire il valore solo se il CSA lo indica esplicitamente, altrimenti null.
 
 subappalto_categorie_vietate: lista delle categorie SOA o lavorazioni per cui il subappalto è esplicitamente vietato (es. categoria prevalente, lavorazioni a carattere speciale). Lista vuota [] se nessun divieto specifico è indicato.
 
@@ -214,19 +214,19 @@ def _valida_csa_data(data: dict) -> dict:
     automaticamente i valori impossibili."""
     warnings_val = []
 
-    # Subappalto max 30% — Art. 119 D.Lgs. 36/2023
+    # Art. 119 D.Lgs. 36/2023 — nessun limite fisso; usa solo valore CSA
     sub_pct = data.get("subappalto_percentuale_massima")
     if sub_pct is not None:
         try:
             sub_pct = float(sub_pct)
-            if sub_pct > 30.0:
-                warnings_val.append(
-                    f"⚠️ Subappalto {sub_pct}% supera limite legale 30% (Art. 119) — "
-                    "verifica il testo del CSA"
-                )
             if sub_pct <= 0:
                 data["subappalto_percentuale_massima"] = None
                 warnings_val.append("⚠️ Subappalto percentuale <= 0 — reimpostato a null")
+            elif sub_pct > 100:
+                warnings_val.append(
+                    f"⚠️ Subappalto {sub_pct}% > 100% — probabile errore di estrazione"
+                )
+            # RIMOSSO: il D.Lgs. 36/2023 non fissa più il limite al 30%
         except (ValueError, TypeError):
             pass
 

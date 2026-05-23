@@ -915,8 +915,19 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
         st.divider()
         col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
-            delta_sub = f"{perc_sub:.1f}% / 30% max" if perc_sub is not None else None
-            st.metric("🏗️ Subappalti", f"€ {tot_sub:,.0f}", delta=delta_sub, delta_color="inverse" if (perc_sub or 0) > 30 else "off")
+            # Art. 119 D.Lgs. 36/2023 — limite dinamico da CSA, non fisso per legge
+            limite_sub_csa = float(csa_data.get("subappalto_percentuale_massima") or 0)
+            if perc_sub is not None:
+                if limite_sub_csa > 0:
+                    delta_sub = f"{perc_sub:.1f}% / {limite_sub_csa:.0f}% (CSA)"
+                    colore_sub = "inverse" if perc_sub > limite_sub_csa else "off"
+                else:
+                    delta_sub = f"{perc_sub:.1f}% — nessun limite (Art. 119)"
+                    colore_sub = "off"
+            else:
+                delta_sub = None
+                colore_sub = "off"
+            st.metric("🏗️ Subappalti", f"€ {tot_sub:,.0f}", delta=delta_sub, delta_color=colore_sub)
         with col_b:
             delta_subaffid = f"{perc_subaffid:.1f}% / 10% max" if perc_subaffid is not None else None
             st.metric("🏭 Subaffidamenti", f"€ {tot_subaffid:,.0f}", delta=delta_subaffid, delta_color="inverse" if (perc_subaffid or 0) > 10 else "off")
@@ -1231,7 +1242,10 @@ def _render_sintesi(csa_data: dict, importo_netto: float) -> None:
     col_s1, col_s2 = st.columns(2)
     with col_s1:
         sub_pct = csa_data.get("subappalto_percentuale_massima")
-        st.markdown(f"**Percentuale massima:** {sub_pct or 30}%")
+        if sub_pct:
+            st.markdown(f"**Percentuale massima (CSA):** {sub_pct}%")
+        else:
+            st.markdown("**Percentuale massima:** nessun limite (Art. 119 D.Lgs. 36/2023)")
         sub_aut = csa_data.get("subappalto_autorizzazione_richiesta")
         st.markdown(f"**Autorizzazione SA richiesta:** {'Sì' if sub_aut else 'No'}")
         sub_qual = csa_data.get("subappalto_qualificazione_richiesta")
@@ -2257,10 +2271,25 @@ def main() -> None:
 
         st.divider()
 
+        # Art. 119 D.Lgs. 36/2023 — limite subappalto dinamico da CSA
+        limite_sub_csa = csa_data.get("subappalto_percentuale_massima")
+        if limite_sub_csa:
+            st.info(
+                f"🔒 **Limite subappalto da CSA**: max **{float(limite_sub_csa):.0f}%** "
+                f"dell'importo contrattuale netto (Art. 119 D.Lgs. 36/2023)"
+            )
+        else:
+            st.info(
+                "ℹ️ **Nessun limite percentuale fisso** per il subappalto "
+                "(Art. 119 D.Lgs. 36/2023 — il D.Lgs. 36/2023 ha rimosso "
+                "il limite del 30% del vecchio D.Lgs. 50/2016). "
+                "Verifica eventuali limiti nel tuo CSA."
+            )
+        # Art. 122 D.Lgs. 36/2023 — limite subaffidamenti invariato al 10%
         limite_subaffid_10 = importo_netto * 0.10
         st.info(
-            f"🔒 **Limite Art. 122 D.Lgs. 36/2023**: "
-            f"Subaffidamenti max **€ {limite_subaffid_10:,.0f}** (10% importo netto)"
+            f"🔒 **Limite subaffidamenti Art. 122 D.Lgs. 36/2023**: "
+            f"max **€ {limite_subaffid_10:,.0f}** (10% importo netto)"
         )
         oe = st.session_state.get("operatori_economici", {})
         subs = oe.get("subappaltatori", [])

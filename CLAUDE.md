@@ -24,7 +24,7 @@ dell'impresa appaltatrice, che gestisce appalti pubblici italiani regolati da
 ### 📋 ARTICOLI CHIAVE D.LGS. 36/2023
 - **Art. 60** — Revisione prezzi (franchigia **3%** per contratti lavori, clausole revisionali — D.Lgs. 209/2024 correttivo)
 - **Art. 113** — Penali per ritardo (‰ giornaliero, cap massimo)
-- **Art. 119** — Subappalto (limite 30% importo contrattuale)
+- **Art. 119** — Subappalto (nessun limite fisso — il D.Lgs. 36/2023 ha eliminato il 30% del D.Lgs. 50/2016; limite definito dal CSA)
 - **Art. 120** — Varianti in corso d'opera e riserve
 - **Art. 121** — Riserve: iscrizione tempestiva, esplicitazione 15gg, risposta DL 30gg
 - **Art. 122** — Subaffidamenti (limite 10% importo contrattuale)
@@ -91,7 +91,7 @@ Quando scrivi o modifichi codice per STRUMENTODT:
 
 1. **Cita la norma nei commenti** quando hardcodi un limite legale (es. `# Art. 125 D.Lgs. 36/2023`)
 2. **Limiti numerici con fonte normativa**:
-   - Subappalto: max **30%** importo netto (Art. 119 D.Lgs. 36/2023)
+   - Subappalto: **nessun limite fisso di legge** (Art. 119 D.Lgs. 36/2023 — il D.Lgs. 36/2023 ha eliminato il limite del 30% presente nel vecchio D.Lgs. 50/2016); il limite è definito dal CSA — se non indicato nel CSA non si applica alcuna soglia percentuale fissa
    - Subaffidamenti: max **10%** importo del singolo subappalto (Art. 122 D.Lgs. 36/2023)
    - Anticipazione: max **20%** importo contrattuale netto (Art. 125 D.Lgs. 36/2023)
    - Riserve — iscrizione: **15 giorni** dall'evento generatore (Art. 121 D.Lgs. 36/2023)

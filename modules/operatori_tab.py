@@ -3,7 +3,7 @@ operatori_tab.py — Gestione operatori economici per l'app DTC.
 
 Struttura gerarchica a tre livelli:
   L0 — Appaltatore principale (dati + documenti)
-  L1 — Subappaltatori (dipendono dall'appaltatore, limite 30% art.119 D.Lgs.36/2023)
+  L1 — Subappaltatori (dipendono dall'appaltatore; nessun limite fisso di legge — art.119 D.Lgs.36/2023; limite definito dal CSA)
   L2 — Subaffidatari (dipendono da un subappaltatore specifico)
 
 Funzione pubblica: render_operatori_tab(csa_data, importo_base, salva_fn, results_dir)
@@ -20,8 +20,8 @@ from modules.doc_viewer import render_doc_buttons
 _TAB_NOME = "Operatori Economici"
 _DURC_VALIDITA_GG = 120
 _DURC_ALERT_GG = 30
-_SOGLIA_ATTENZIONE = 25.0
-_SOGLIA_LIMITE = 30.0
+_SOGLIA_ATTENZIONE = 25.0  # soglia avviso se presente limite CSA
+_SOGLIA_LIMITE = 30.0      # usata solo se il CSA indica un limite (default conservativo)
 _TIPI_FILE = ["pdf", "docx", "doc", "xlsx", "jpg", "png"]
 _STATI_AUT = ["in_attesa", "autorizzato", "negato"]
 _STATI_LABEL = {
@@ -441,7 +441,11 @@ def _render_appaltatore(app: dict, csa_data: dict, results_dir: pathlib.Path, sa
 
 # ── Livello 1 — Subappaltatori ─────────────────────────────────────────────────
 
-def _render_limite(subs: list, importo_base: float) -> None:
+def _render_limite(subs: list, importo_base: float, csa_data: dict | None = None) -> None:
+    # Art. 119 D.Lgs. 36/2023 — nessun limite fisso; usa valore CSA se presente
+    limite_csa = float((csa_data or {}).get("subappalto_percentuale_massima") or 0)
+    ha_limite = limite_csa > 0
+
     tot_sub = sum(
         float(s.get("importo", 0) or 0) for s in subs if s.get("tipo") == "subappalto"
     )
@@ -451,10 +455,20 @@ def _render_limite(subs: list, importo_base: float) -> None:
 
     c1, c2, c3 = st.columns(3)
     with c1:
+        if importo_base > 0:
+            if ha_limite:
+                delta_label = f"{perc:.1f}% / {limite_csa:.0f}% (CSA)"
+                delta_col = "inverse" if perc > limite_csa else ("off" if perc > limite_csa * 0.85 else "normal")
+            else:
+                delta_label = f"{perc:.1f}% — nessun limite (Art. 119)"
+                delta_col = "normal"
+        else:
+            delta_label = None
+            delta_col = "off"
         st.metric(
             "💶 Totale subappaltato", f"€ {tot_sub:,.0f}",
-            delta=f"{perc:.1f}% / 30% max" if importo_base > 0 else None,
-            delta_color="inverse" if perc > 30 else ("off" if perc > 25 else "normal"),
+            delta=delta_label,
+            delta_color=delta_col,
         )
     with c2:
         st.metric(
@@ -463,18 +477,27 @@ def _render_limite(subs: list, importo_base: float) -> None:
             delta_color="off",
         )
     with c3:
-        if importo_base > 0:
-            residuo = importo_base * 0.3 - tot_sub
+        if importo_base > 0 and ha_limite:
+            residuo = importo_base * (limite_csa / 100) - tot_sub
             st.metric(
-                "📊 Residuo consentito", f"€ {max(residuo, 0):,.0f}",
+                "📊 Residuo consentito (CSA)", f"€ {max(residuo, 0):,.0f}",
                 delta="LIMITE SUPERATO" if residuo < 0 else None,
                 delta_color="inverse" if residuo < 0 else "off",
             )
 
-    if perc > _SOGLIA_LIMITE:
-        st.error(f"🚨 LIMITE SUPERATO: {perc:.1f}% > 30% (art.119 D.Lgs.36/2023)")
-    elif perc > _SOGLIA_ATTENZIONE:
-        st.warning(f"⚠️ Attenzione: {perc:.1f}% — vicino al limite del 30%")
+    if ha_limite:
+        if perc > limite_csa:
+            st.error(
+                f"🚨 LIMITE SUPERATO: {perc:.1f}% > {limite_csa:.0f}% (limite CSA — art.119 D.Lgs.36/2023)"
+            )
+        elif perc > limite_csa * (_SOGLIA_ATTENZIONE / _SOGLIA_LIMITE):
+            st.warning(
+                f"⚠️ Attenzione: {perc:.1f}% — vicino al limite CSA del {limite_csa:.0f}%"
+            )
+    else:
+        st.info(
+            f"ℹ️ Subappalto {perc:.1f}% — nessun limite percentuale nel CSA (art.119 D.Lgs.36/2023)"
+        )
 
 
 def _render_form_sub(oe: dict, importo_base: float, salva_fn) -> None:
@@ -692,7 +715,7 @@ def render_operatori_tab(
     st.header("🏢 Operatori Economici")
     st.caption(
         "Struttura gerarchica: **Appaltatore** → **Subappaltatori** → **Subaffidatari**. "
-        "Limite subappalto: **30%** importo contrattuale (art.119 D.Lgs.36/2023)."
+        "Subappalto: nessun limite fisso di legge (art.119 D.Lgs.36/2023 — limite definito dal CSA se presente)."
     )
 
     common = csa_data.get("comune", "")
@@ -717,7 +740,7 @@ def render_operatori_tab(
 
     # L1 + L2
     st.subheader("🏗️ L1/L2 — Subappaltatori e Subaffidatari")
-    _render_limite(oe["subappaltatori"], importo_base)
+    _render_limite(oe["subappaltatori"], importo_base, csa_data)
     st.divider()
     _render_form_sub(oe, importo_base, salva_fn)
 
