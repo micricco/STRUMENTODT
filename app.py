@@ -38,6 +38,7 @@ from modules.penalties import calcola_penale_cumulativa, simula_revisione_prezzi
 from modules.registri_tab import render_registri_tab, _render_contabilita_sal
 from modules.pianificazione_tab import render_pianificazione_tab
 from modules.sicurezza_apprestamenti_tab import render_sicurezza_apprestamenti_tab
+from modules.approvvigionamento_tab import render_approvvigionamento_tab
 
 # ── Costanti ───────────────────────────────────────────────────────────────────
 RESULTS_DIR = pathlib.Path("results")
@@ -175,6 +176,7 @@ def _salva_analisi() -> None:
     payload["_doc_elaborati"] = st.session_state.get("doc_elaborati", {})
     payload["_varianti_proroghe"] = st.session_state.get("_varianti_proroghe", [])
     payload["_apprestamenti_sicurezza"] = st.session_state.get("apprestamenti_sicurezza", [])
+    payload["_approv_voci_cme"] = st.session_state.get("approv_voci_cme", [])
 
     # pianificazione
     piano = st.session_state.get("pianificazione")
@@ -226,6 +228,7 @@ def _carica_analisi(percorso: pathlib.Path) -> None:
     st.session_state.doc_elaborati = payload.pop("_doc_elaborati", {})
     st.session_state._varianti_proroghe = payload.pop("_varianti_proroghe", [])
     st.session_state["apprestamenti_sicurezza"] = payload.pop("_apprestamenti_sicurezza", [])
+    st.session_state["approv_voci_cme"] = payload.pop("_approv_voci_cme", [])
 
     piano = payload.pop("_pianificazione", None)
     if piano:
@@ -1004,6 +1007,28 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
         st.warning(
             f"🦺 **{len(_apprest_non_ordinati)} apprestamenti** "
             "non ancora ordinati — apri tab Sicurezza e Apprestamenti"
+        )
+
+    # Alert approvvigionamento
+    _voci_approv = st.session_state.get("approv_voci_cme", [])
+    _da_ordinare = [
+        v for v in _voci_approv
+        if not v.get("ordine", {}).get("confermato")
+        and any(o.get("selezionata") for o in v.get("offerte", []))
+    ]
+    _consegne_attese = [
+        v for v in _voci_approv
+        if v.get("ordine", {}).get("confermato")
+        and float(v.get("ordine", {}).get("quantita_consegnata", 0) or 0)
+        < float(v.get("quantita", 0) or 0)
+    ]
+    if _da_ordinare:
+        st.info(
+            f"📦 **{len(_da_ordinare)} materiali** con offerta selezionata da confermare in ordine"
+        )
+    if _consegne_attese:
+        st.warning(
+            f"🚚 **{len(_consegne_attese)} consegne** in attesa — verifica stato in Approvvigionamento"
         )
 
     # Riepilogo rapido
@@ -2172,26 +2197,13 @@ def main() -> None:
         )
 
     with tab_approvvigionamento:
-        st.header("📦 Approvvigionamento")
-
-        fase_approv = st.radio(
-            "Fase",
-            [
-                "🔍 Pre-cantiere — Estrazione materiali e richieste offerta",
-                "🏗️ Cantiere — Conferma ordini e tracciamento consegne",
-            ],
-            horizontal=True,
-            key="approv_fase",
+        render_approvvigionamento_tab(
+            csa_data=csa_data,
+            api_key=api_key,
+            salva_fn=_salva_stato_cantiere,
+            results_dir=RESULTS_DIR,
         )
-
-        if "Pre-cantiere" in fase_approv:
-            st.info("🔜 In arrivo: estrazione materiali da CME, generazione stralci per fornitori, confronto offerte")
-            _render_documenti(csa_data, api_key)
-        else:
-            st.info("🔜 In arrivo: conferma ordini, tracciamento consegne, verifica quantità ricevute vs ordinate")
-
         st.divider()
-
         st.subheader("🗺️ Mappa Fornitori")
         _render_mappa(csa_data)
 
