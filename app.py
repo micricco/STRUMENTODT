@@ -25,6 +25,7 @@ from modules.csa_analyzer import (
     _COSTO_INPUT_HAIKU,
     _COSTO_OUTPUT_HAIKU,
     _estrai_pagine_rilevanti,
+    _testo_e_garbled,
     analyze_csa,
     conta_pagine_pdf,
     conta_token_api,
@@ -781,6 +782,12 @@ def _esegui_analisi(pdf_bytes: bytes, api_key: str) -> None:
         st.session_state._smart_extract_stats = stats
         st.session_state["csa_ocr_usato"] = stats.get("ocr_usato", False)
         barra.progress(0.30, text="Conteggio token…")
+
+        # DEBUG TEMPORANEO — rimuovere dopo fix OCR
+        _garbled = _testo_e_garbled(testo_filtrato)
+        st.sidebar.caption(f"🔍 DEBUG garbled: {_garbled}")
+        st.sidebar.caption(f"🔍 DEBUG len testo: {len(testo_filtrato):,} chars")
+        st.sidebar.caption(f"🔍 DEBUG ocr_usato: {stats.get('ocr_usato', False)}")
 
         n_token = conta_token_api(testo_filtrato, api_key, pdf_bytes)
         costo_est = n_token * _COSTO_INPUT_HAIKU

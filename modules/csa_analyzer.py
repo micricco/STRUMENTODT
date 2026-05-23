@@ -962,7 +962,13 @@ def conta_token_api(testo: str, api_key: str, pdf_bytes: bytes | None = None) ->
             }],
         )
         return resp.input_tokens
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            "conta_token_api fallback //4: %s: %s | len=%d garbled=%s",
+            type(e).__name__, str(e)[:200],
+            len(testo_da_contare), _testo_e_garbled(testo_da_contare),
+        )
         return len(testo_da_contare) // 4
 
 
