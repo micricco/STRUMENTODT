@@ -44,6 +44,7 @@ EXTRACTION_PROMPT = """Sei un esperto di appalti pubblici italiani (D.Lgs. 36/20
   "riserve_quantificazione_giorni": intero o null,
   "collaudo_giorni": intero o null,
   "importo_oneri_sicurezza": float o null,
+  "anticipazione_percentuale": percentuale anticipazione sull'importo contrattuale (es. 20.0). null se non indicata esplicitamente (si applica il default 20% Art. 125 D.Lgs. 36/2023),
   "subappalto_percentuale_massima": percentuale massima subappaltabile come float (es. 30.0) o null se non indicata,
   "subappalto_categorie_vietate": ["lista codici SOA o lavorazioni non subappaltabili"] o lista vuota [],
   "subappalto_autorizzazione_richiesta": true se è richiesta autorizzazione esplicita della SA, false altrimenti,
@@ -129,6 +130,8 @@ checklist_assicurative: tutte le polizze richieste con massimali e termini in gi
 cig: il Codice Identificativo Gara ha ESATTAMENTE 10 caratteri alfanumerici. Cercarlo nella prima pagina, nell'intestazione o nel frontespizio del documento. Formato tipico: lettere e cifre miste (es. 8E33B74813). Se non presente o incerto restituire null.
 
 cup: il Codice Unico di Progetto ha ESATTAMENTE 15 caratteri alfanumerici. Formato tipico: inizia con lettera, seguono cifre e lettere (es. J37H21000190004). Cercarlo nella prima pagina o nell'intestazione. Se non presente o incerto restituire null.
+
+anticipazione_percentuale: percentuale di anticipazione sull'importo contrattuale netto (al netto del ribasso) prevista dal CSA o dal contratto. Il limite legale è 20% (Art. 125 D.Lgs. 36/2023); alcune SA prevedono percentuali inferiori (es. 10%, 15%). null se non indicata esplicitamente.
 
 subappalto_percentuale_massima: percentuale massima subappaltabile indicata nel CSA (art.119 D.Lgs.36/2023). Il limite legale di default è 30%; se il CSA prevede una percentuale diversa (superiore o inferiore) indicarla. null se non esplicitamente indicata.
 

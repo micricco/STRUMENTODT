@@ -1871,6 +1871,29 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
     st.subheader("💶 Anticipazione Contrattuale (Art. 125 D.Lgs. 36/2023)")
 
     ant = st.session_state.registri.get("anticipazione_sal", {})
+
+    # Percentuale dal CSA (se estratta) o default legale 20%
+    perc_ant_csa_raw = details.get("anticipazione_percentuale") if details else None
+    try:
+        perc_ant_csa = float(perc_ant_csa_raw) if perc_ant_csa_raw is not None else None
+    except (ValueError, TypeError):
+        perc_ant_csa = None
+
+    if perc_ant_csa and 0 < perc_ant_csa <= 30:
+        perc_ant_riferimento = perc_ant_csa
+        fonte_perc = f"**{perc_ant_csa:.1f}%** — estratta dal CSA"
+    else:
+        perc_ant_riferimento = 20.0
+        fonte_perc = "**20%** — default Art. 125 D.Lgs. 36/2023 (non indicata nel CSA)"
+
+    # Importo calcolato su importo_netto (già al netto del ribasso)
+    importo_ant_calcolato = importo_netto * perc_ant_riferimento / 100 if importo_netto > 0 else 0.0
+    st.caption(
+        f"📐 Percentuale anticipazione: {fonte_perc} — "
+        f"Importo calcolato: **{_formatta_importo(importo_ant_calcolato)}** "
+        f"(su importo netto dopo ribasso {_formatta_importo(importo_netto)})"
+    )
+
     ant_ricevuta = st.toggle(
         "Anticipazione ricevuta",
         value=bool(ant.get("ricevuta", False)),
@@ -1879,7 +1902,8 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
 
     if ant_ricevuta:
         col_ant1, col_ant2, col_ant3 = st.columns(3)
-        default_importo_ant = float(ant["importo"]) if ant.get("importo") else (importo_netto * 0.20 if importo_netto > 0 else 0.0)
+        # Default: usa importo salvato se presente, altrimenti calcolo automatico
+        default_importo_ant = float(ant["importo"]) if ant.get("importo") else importo_ant_calcolato
         with col_ant1:
             importo_ant = st.number_input(
                 "Importo anticipazione (€)",
@@ -1888,13 +1912,13 @@ def _render_contabilita_sal(csa_data, details, importo_netto, results_dir, salva
                 step=1000.0,
                 format="%.2f",
                 key="ant_importo",
-                help="Massimo 20% importo contrattuale (Art. 125 D.Lgs. 36/2023)",
+                help=f"Art. 125 D.Lgs. 36/2023 — massimo 20% importo contrattuale netto (dopo ribasso)",
             )
             perc_ant_calc = (importo_ant / importo_netto * 100) if importo_netto > 0 else 0.0
             if perc_ant_calc > 20.0:
-                st.error(f"❌ Supera il 20% massimo! (attuale: {perc_ant_calc:.1f}%)")
+                st.error(f"❌ Supera il 20% massimo consentito! (attuale: {perc_ant_calc:.1f}%)")
             else:
-                st.caption(f"✅ {perc_ant_calc:.1f}% dell'importo contrattuale")
+                st.caption(f"✅ {perc_ant_calc:.1f}% dell'importo netto contrattuale")
         with col_ant2:
             data_ant_default = None
             if ant.get("data_erogazione"):
