@@ -37,6 +37,7 @@ from modules.operatori_tab import render_durc_semaphore, render_operatori_tab
 from modules.penalties import calcola_penale_cumulativa, simula_revisione_prezzi
 from modules.registri_tab import render_registri_tab, _render_contabilita_sal
 from modules.pianificazione_tab import render_pianificazione_tab
+from modules.sicurezza_apprestamenti_tab import render_sicurezza_apprestamenti_tab
 
 # ── Costanti ───────────────────────────────────────────────────────────────────
 RESULTS_DIR = pathlib.Path("results")
@@ -173,6 +174,7 @@ def _salva_analisi() -> None:
 
     payload["_doc_elaborati"] = st.session_state.get("doc_elaborati", {})
     payload["_varianti_proroghe"] = st.session_state.get("_varianti_proroghe", [])
+    payload["_apprestamenti_sicurezza"] = st.session_state.get("apprestamenti_sicurezza", [])
 
     # pianificazione
     piano = st.session_state.get("pianificazione")
@@ -223,6 +225,7 @@ def _carica_analisi(percorso: pathlib.Path) -> None:
 
     st.session_state.doc_elaborati = payload.pop("_doc_elaborati", {})
     st.session_state._varianti_proroghe = payload.pop("_varianti_proroghe", [])
+    st.session_state["apprestamenti_sicurezza"] = payload.pop("_apprestamenti_sicurezza", [])
 
     piano = payload.pop("_pianificazione", None)
     if piano:
@@ -990,6 +993,18 @@ def _render_dashboard(csa_data: dict, details: dict, importo_netto: float) -> No
             )
         else:
             st.success("✅ Anticipazione contrattuale (Art. 125) completamente recuperata")
+
+    # Alert apprestamenti non ordinati
+    _apprestamenti = st.session_state.get("apprestamenti_sicurezza", [])
+    _apprest_non_ordinati = [
+        a for idx, a in enumerate(_apprestamenti)
+        if not st.session_state.get(f"apprest_ordinato_{idx}", False)
+    ]
+    if _apprest_non_ordinati:
+        st.warning(
+            f"🦺 **{len(_apprest_non_ordinati)} apprestamenti** "
+            "non ancora ordinati — apri tab Sicurezza e Apprestamenti"
+        )
 
     # Riepilogo rapido
     st.divider()
@@ -2149,16 +2164,12 @@ def main() -> None:
             _render_guida()
 
     with tab_sicurezza_apprestamenti:
-        st.header("🦺 Sicurezza e Apprestamenti")
-        st.info("🔜 In arrivo: estrazione automatica apprestamenti da CME (ponteggi, bagni, recinzioni, baracche) con verifica D.Lgs. 81/2008")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("📋 Apprestamenti richiesti dal CME")
-            st.caption("Verranno estratti automaticamente dal Computo Metrico")
-        with col2:
-            st.subheader("⚖️ Verifica minimi di legge")
-            st.caption("Confronto con requisiti minimi D.Lgs. 81/2008 — Titolo IV")
+        render_sicurezza_apprestamenti_tab(
+            csa_data=csa_data,
+            api_key=api_key,
+            salva_fn=_salva_stato_cantiere,
+            results_dir=RESULTS_DIR,
+        )
 
     with tab_approvvigionamento:
         st.header("📦 Approvvigionamento")
