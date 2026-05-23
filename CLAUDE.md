@@ -22,7 +22,7 @@ dell'impresa appaltatrice, che gestisce appalti pubblici italiani regolati da
 - **L. 136/2010** — Tracciabilità flussi finanziari (CIG obbligatorio)
 
 ### 📋 ARTICOLI CHIAVE D.LGS. 36/2023
-- **Art. 60** — Revisione prezzi (franchigia 5%, clausole revisionali)
+- **Art. 60** — Revisione prezzi (franchigia **3%** per contratti lavori, clausole revisionali — D.Lgs. 209/2024 correttivo)
 - **Art. 113** — Penali per ritardo (‰ giornaliero, cap massimo)
 - **Art. 119** — Subappalto (limite 30% importo contrattuale)
 - **Art. 120** — Varianti in corso d'opera e riserve
@@ -98,7 +98,7 @@ Quando scrivi o modifichi codice per STRUMENTODT:
    - Riserve — esplicitazione: **15 giorni** dalla firma atto contabile (Art. 121 D.Lgs. 36/2023)
    - Riserve — risposta DL: **30 giorni** dall'esplicitazione (Art. 121 D.Lgs. 36/2023)
    - Penale massima: cap definito nel CSA, tipicamente **10%** importo netto (Art. 113 D.Lgs. 36/2023)
-   - Revisione prezzi — franchigia: **5%** (Art. 60 D.Lgs. 36/2023; correttivo 2024: 3% per alcune categorie)
+   - Revisione prezzi — franchigia: **3%** per contratti di lavori (Art. 60 D.Lgs. 36/2023 come modificato da D.Lgs. 209/2024); attivazione se variazione > 3% importo complessivo; compensazione sul 90% del valore eccedente
    - Collaudo/CRE: entro **6 mesi** dall'ultimazione (Allegato II.14 D.Lgs. 36/2023)
    - Pagamento SAL: entro **30 giorni** dal certificato di pagamento (Art. 108 D.Lgs. 36/2023)
 3. **Prima di ogni nuova funzionalità**: verifica la conformità normativa usando le skill `/codice-appalti` o `/dm49-direzione-lavori`

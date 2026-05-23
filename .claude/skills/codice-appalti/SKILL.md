@@ -80,19 +80,19 @@ argument-hint: [articolo, tema, es. "Art.125" o "anticipazione" o "riserve"]
 ### Art. 60 — Revisione prezzi (ex art. 29 D.Lgs. 50/2016)
 **Applicazione obbligatoria** per contratti di lavori con durata superiore a 12 mesi
 
-**Meccanismo**:
-- Variazione ≥ **5%** rispetto al prezzo originale (soglia di attivazione)
-- Revisione applicata sulla quota eccedente il 5% (non sull'intera variazione)
-- Indici di riferimento: ISTAT per i materiali edili, ANAC per i singoli servizi
+**Meccanismo (come modificato da D.Lgs. 209/2024)**:
+- Franchigia **3%** per contratti di lavori (soglia di attivazione sulla variazione dell'importo complessivo)
+- Compensazione sul **90%** del valore eccedente la franchigia
+- Indici di riferimento: ISTAT per i materiali edili, tabelle MEF aggiornate semestralmente
 - Il CSA deve indicare l'elenco delle voci soggette a revisione
 
 **Formula base**:
 ```
-Revisione = (Prezzo_attuale - Prezzo_contrattuale × 1.05) × Quantità_eseguita
+Revisione = (Prezzo_attuale - Prezzo_contrattuale × 1.03) × Quantità_eseguita × 0.90
 ```
-applicata per ciascuna voce con variazione > 5%
+applicata per ciascuna voce quando la variazione complessiva supera il 3%
 
-**Correttivo 2024**: introdotto meccanismo di compensazione prezzi per le "opere in corso" — tabelle MEF aggiornate semestralmente
+**Correttivo 2024 (D.Lgs. 209/2024)**: franchigia ridotta dal 5% al 3% per i contratti di lavori; compensazione elevata all'90% (era 80%); tabelle MEF aggiornate semestralmente
 
 ---
 
