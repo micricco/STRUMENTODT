@@ -261,6 +261,75 @@ def _carica_analisi(percorso: pathlib.Path) -> None:
     aggiungi_log("Analisi caricata", percorso.name, tab="Sidebar")
 
 
+def _get_stato_cantiere() -> dict:
+    """Raccoglie tutto lo stato corrente in un dict serializzabile per l'esportazione."""
+    dc = st.session_state.get("data_consegna_cantiere")
+    piano = st.session_state.get("pianificazione")
+    return {
+        "csa_data": st.session_state.get("csa_data", {}),
+        "operatori_economici": st.session_state.get("operatori_economici", {}),
+        "registri": st.session_state.get("registri", {}),
+        "checklist_stato": st.session_state.get("checklist_stato", {}),
+        "log_attivita": st.session_state.get("log_attivita", []),
+        "doc_elaborati": st.session_state.get("doc_elaborati", {}),
+        "_varianti_proroghe": st.session_state.get("_varianti_proroghe", []),
+        "apprestamenti_sicurezza": st.session_state.get("apprestamenti_sicurezza", []),
+        "approv_voci_cme": st.session_state.get("approv_voci_cme", []),
+        "rubrica_contatti": st.session_state.get("rubrica_contatti", {}),
+        "pianificazione": piano if piano else {},
+        "fase_commessa": st.session_state.get("fase_commessa", "🔵 Pre-cantiere"),
+        "cig_manuale": st.session_state.get("cig_manuale", ""),
+        "cup_manuale": st.session_state.get("cup_manuale", ""),
+        "ribasso_pct": float(st.session_state.get("ribasso_pct", 0.0)),
+        "data_consegna_cantiere": dc.isoformat() if dc else None,
+        "_pdf_nome": st.session_state.get("_pdf_nome", "analisi"),
+        "exportato_il": str(date.today()),
+        "versione_app": "2.1",
+    }
+
+
+def _ripristina_stato_cantiere(stato: dict) -> None:
+    """Ripristina il session_state da un dict esportato (JSON importato)."""
+    csa = stato.get("csa_data", {})
+    st.session_state["csa_data"] = csa
+    st.session_state["operatori_economici"] = stato.get("operatori_economici", {})
+    st.session_state["registri"] = stato.get("registri", {})
+    st.session_state["checklist_stato"] = stato.get("checklist_stato", {})
+    st.session_state["log_attivita"] = stato.get("log_attivita", [])
+    st.session_state["doc_elaborati"] = stato.get("doc_elaborati", {})
+    st.session_state["_varianti_proroghe"] = stato.get("_varianti_proroghe", [])
+    st.session_state["apprestamenti_sicurezza"] = stato.get("apprestamenti_sicurezza", [])
+    st.session_state["approv_voci_cme"] = stato.get("approv_voci_cme", [])
+    st.session_state["rubrica_contatti"] = stato.get("rubrica_contatti", {})
+    st.session_state["fase_commessa"] = stato.get("fase_commessa", "🔵 Pre-cantiere")
+    st.session_state["cig_manuale"] = stato.get("cig_manuale", "")
+    st.session_state["cup_manuale"] = stato.get("cup_manuale", "")
+    piano = stato.get("pianificazione")
+    if piano:
+        st.session_state["pianificazione"] = piano
+
+    dc_str = stato.get("data_consegna_cantiere")
+    if dc_str:
+        try:
+            st.session_state["data_consegna_cantiere"] = date.fromisoformat(dc_str)
+        except Exception:
+            st.session_state["data_consegna_cantiere"] = None
+    else:
+        st.session_state["data_consegna_cantiere"] = None
+
+    st.session_state["_ribasso_pendente"] = float(stato.get("ribasso_pct", 0.0))
+    st.session_state["_pdf_nome"] = stato.get("_pdf_nome", "analisi_importata")
+    st.session_state["_file_id"] = f"__imported__{stato.get('_pdf_nome', 'analisi')}"
+    st.session_state["_demo_active"] = False
+    st.session_state["pdf_bytes"] = None
+    st.session_state["sospensioni"] = []
+    st.session_state["_sosp_counter"] = 0
+    st.session_state["coords"] = None
+    st.session_state["suppliers"] = None
+
+    aggiungi_log("Analisi importata", stato.get("_pdf_nome", ""), tab="Sidebar")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # EXPORT EXCEL
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -658,6 +727,56 @@ def _render_sidebar() -> str:
                             if is_attiva:
                                 _reset_sessione()
                             st.rerun()
+
+        # ── Backup Analisi (Esporta / Importa) ────────────────────────────────
+        st.sidebar.divider()
+        with st.sidebar.expander("💾 Backup Analisi", expanded=False):
+            stato_corrente = _get_stato_cantiere()
+            if stato_corrente.get("csa_data"):
+                nome_progetto = (
+                    stato_corrente["csa_data"].get("tipo_lavori", "cantiere")[:30]
+                    .replace(" ", "_")
+                )
+                data_oggi = date.today().strftime("%Y%m%d")
+                nome_file = f"analisi_{nome_progetto}_{data_oggi}.json"
+                json_bytes = json.dumps(
+                    stato_corrente, ensure_ascii=False, indent=2, default=str
+                ).encode("utf-8")
+                st.download_button(
+                    label="📤 Esporta analisi (JSON)",
+                    data=json_bytes,
+                    file_name=nome_file,
+                    mime="application/json",
+                    key="btn_esporta_analisi",
+                    use_container_width=True,
+                    help="Scarica il JSON completo per reimportarlo in seguito",
+                )
+            else:
+                st.caption("Nessuna analisi da esportare.")
+
+            st.divider()
+
+            uploaded_json = st.file_uploader(
+                "📥 Importa analisi (JSON)",
+                type=["json"],
+                key="up_importa_analisi",
+                help="Carica un JSON esportato precedentemente",
+            )
+            if uploaded_json:
+                try:
+                    stato_importato = json.loads(uploaded_json.read().decode("utf-8"))
+                    if not stato_importato.get("csa_data"):
+                        st.error("❌ File non valido — manca csa_data")
+                    else:
+                        nome_imp = stato_importato["csa_data"].get(
+                            "tipo_lavori", "Analisi importata"
+                        )
+                        st.success(f"✅ Trovata: {nome_imp}")
+                        if st.button("📥 Carica analisi", key="btn_carica_json", use_container_width=True):
+                            _ripristina_stato_cantiere(stato_importato)
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Errore lettura file: {e}")
 
         # ── Export Excel ───────────────────────────────────────────────────────
         csa_data = st.session_state.get("csa_data")
