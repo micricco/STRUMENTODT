@@ -765,8 +765,23 @@ def _render_sidebar() -> str:
             if uploaded_json:
                 try:
                     stato_importato = json.loads(uploaded_json.read().decode("utf-8"))
+
+                    # Rileva formato vecchio (csa_data non al primo livello)
                     if not stato_importato.get("csa_data"):
-                        st.error("❌ File non valido — manca csa_data")
+                        possibili_chiavi = ["csa", "data", "analisi", "cantiere", "result"]
+                        for chiave in possibili_chiavi:
+                            if stato_importato.get(chiave, {}).get("importo_lavori"):
+                                stato_importato = {"csa_data": stato_importato[chiave]}
+                                break
+                        else:
+                            # Il file IS direttamente csa_data (vecchio formato _salva_analisi)
+                            if stato_importato.get("importo_lavori") or stato_importato.get("tipo_lavori"):
+                                stato_importato = {"csa_data": stato_importato}
+
+                    st.caption(f"Chiavi trovate: {list(stato_importato.keys())[:5]}")
+
+                    if not stato_importato.get("csa_data"):
+                        st.error("❌ File non valido — nessun dato CSA riconoscibile")
                     else:
                         nome_imp = stato_importato["csa_data"].get(
                             "tipo_lavori", "Analisi importata"
