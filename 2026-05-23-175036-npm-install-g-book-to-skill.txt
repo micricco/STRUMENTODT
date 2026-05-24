@@ -1,0 +1,1070 @@
+ ▐▛███▜▌   Claude Code v2.1.150
+▝▜█████▛▘  Sonnet 4.6 · Claude Pro
+  ▘▘ ▝▝    ~\Desktop\claudeai\STRUMENTODT
+
+> npm install -g book-to-skill                                                  
+
+● Bash(npm install -g book-to-skill 2>&1)
+  ⎿  Error: Exit code 1
+     npm error code E404
+     npm error 404 Not Found - GET https://registry.npmjs.org/book-to-skill - 
+     Not found
+     npm error 404
+     npm error 404  The requested resource 'book-to-skill@*' could not be found 
+     or you do not have permission to access it.
+     npm error 404
+     npm error 404 Note that you can also install from a
+     npm error 404 tarball, folder, http url, or git url.
+     npm error A complete log of this run can be found in: C:\Users\archi\AppDat
+     a\Local\npm-cache\_logs\2026-05-23T15_24_39_633Z-debug-0.log
+
+● book-to-skill non esiste come pacchetto npm — è una skill integrata in Claude 
+  Code, non un tool esterno da installare.
+
+  Per usarla, digita direttamente nel prompt:
+
+  /book-to-skill ~/percorso/al/file.pdf nome-skill
+
+  Ad esempio, per convertire un PDF normativo in skill:
+
+  /book-to-skill ~/Downloads/DM_49_2018.pdf dm49-direzione-lavori
+
+  La skill è già disponibile nel tuo ambiente Claude Code — puoi vederla
+  nell'elenco degli skill disponibili sopra.
+
+✻ Worked for 11s
+
+> /book-to-skill C:\Users\archi\Download\codiceappalti2023.pdf codice-appalti   
+
+● Avvio la conversione del PDF normativo in skill. Prima valido il file.
+
+● Bash(if (Test-Path "C:\Users\archi\Download\codiceappalti2023.pdf") {
+      "FILE_OK" } else { "FILE_NOT_FOUND" })
+  ⎿  Error: Exit code 2
+     /usr/bin/bash: eval: line 1: syntax error near unexpected token `{'
+     /usr/bin/bash: eval: line 1: `if (Test-Path 
+     "C:\Users\archi\Download\codiceappalti2023.pdf") { "FILE_OK" } else { 
+     "FILE_NOT_FOUND" }'
+
+● PowerShell(if (Test-Path "C:\Users\archi\Download\codiceappalti2023.pdf") {
+            "FILE_OK" } else { "FILE_NOT_FOUND" })
+  ⎿  FILE_NOT_FOUND
+
+● PowerShell(Get-ChildItem "C:\Users\archi\Download\" -Filter "*.pdf" 2>$null |
+            Select-Object Name, Length; if (-not (Test-Path
+            "C:\Users\archi\Download\")) { "FOLDER_NOT_FO…)
+  ⎿  FOLDER_NOT_FOUND
+
+● PowerShell(Get-ChildItem "C:\Users\archi\" | Select-Object Name,
+            LastWriteTime)
+  ⎿  Name              LastWriteTime
+     ----              -------------
+     .ArubaEnroll      11/07/2024 11:30:38
+     … +30 lines (ctrl+o to expand)
+
+● PowerShell(Get-ChildItem "C:\Users\archi\Downloads\" -Filter "*.pdf" |
+            Select-Object Name, Length, LastWriteTime | Sort-Object
+            LastWriteTime -Descending | Select-Object -F…)
+  ⎿  Name                                                                  
+      Length LastWriteTime
+     ----                                                                 
+     … +15 lines (ctrl+o to expand)
+
+● Il file esiste in C:\Users\archi\Downloads\codiceappalti2023.pdf (con la "s"
+  finale). Procedo con il percorso corretto.
+
+  Ora cerco lo script di estrazione della skill:
+
+● PowerShell($candidates = @(
+              ".agents/skills/book-to-skill/scripts/extract.py",…)
+  ⎿  NOT FOUND: .agents/skills/book-to-skill/scripts/extract.py
+     NOT FOUND: C:\Users\archi/.config/agents/skills/book-to-skill/scripts/
+     extract.py
+     … +3 lines (ctrl+o to expand)
+
+● Script trovato. Prima di procedere all'estrazione:
+
+● User answered Claude's questions:
+  ⎿  · Che tipo di contenuto ha questo documento (D.Lgs. 36/2023 Codice 
+     Appalti)? → Testo normativo
+
+● Modalità testo selezionata — estrazione rapida con PyMuPDF/pdftotext. Avvio
+  l'estrazione:
+
+● PowerShell($SCRIPT =
+            "C:\Users\archi\.claude\skills\book-to-skill\scripts\extract.py"
+            $PDF = "C:\Users\archi\Downloads\codiceappalti2023.pdf"…)
+  ⎿  WARNING: Cache entry deserialization failed, entry ignored
+     Collecting PyPDF2
+       Downloading pypdf2-3.0.1-py3-none-any.whl.metadata (6.8 kB)
+     … +42 lines (ctrl+o to expand)
+  ⎿  (timeout 2m)
+
+● Estrazione completata. Ora verifico la struttura del documento e stimo il
+  costo.
+
+● PowerShell(Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\metadata.json" |
+            ConvertFrom-Json | Format-List)
+  ⎿  source_file             : C:\Users\archi\Downloads\codiceappalti2023.p
+     df
+     filename                : codiceappalti2023.pdf
+     … +14 lines (ctrl+o to expand)
+
+● PowerShell(# Check if codice-appalti skill already exists in claude skills
+            Test-Path "C:\Users\archi\.claude\skills\codice-appalti"…)
+  ⎿  False
+
+     Name
+     … +2 lines (ctrl+o to expand)
+
+● PowerShell(# Scan document for structural headings (Libri, Titoli, Capi,
+            Articoli)
+            $text = Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\full_text.txt"
+            -R…)  ⎿  LIBRO I - DEI PRINCIPI, DELLA DIGITALIZZAZIONE, DELLA PROGRAMMAZIONE,
+     DELLA PROGETTAZIONE  ........................................ 9
+     PARTE  I - DEI  PRINCIPI  9
+     … +132 lines (ctrl+o to expand)
+
+● Struttura identificata — 5 Libri, 16+ Parti tematiche. Ecco la stima pre-volo:
+
+  ---
+  📖 Sorgente: codiceappalti2023.pdf (D.Lgs. 36/2023)
+  📄 Pagine: 366 | Parole: 246.453 | Token sorgente: ~328K
+
+  💰 Stima costo (Full Conversion — 16 capitoli tematici):
+     Input  (lettura sezioni + prompt):  ~430K token
+     Output (file skill generati):       ~24K token
+     Totale:                             ~454K token
+
+     Prezzi di riferimento (maggio 2026):
+     Claude Sonnet 4.6  → ~$1.70 USD
+     Claude Haiku 4.5   → ~$0.45 USD
+
+     ⏱  Tempo stimato: ~15-20 minuti
+
+  📁 File che verranno generati:
+     ~/.claude/skills/codice-appalti/
+     ├── SKILL.md                     (framework + indice)
+     ├── chapters/                    (16 capitoli tematici per DTC)
+     │   ├── ch01-principi-generali.md
+     │   ├── ch02-digitalizzazione-bim.md
+     │   ├── ch03-programmazione-progettazione.md
+     │   ├── ch04-sotto-soglia.md
+     │   ├── ch05-anticipazione-revisione-prezzi.md
+     │   ├── ch06-operatori-economici-soa.md
+     │   ├── ch07-procedure-gara.md
+     │   ├── ch08-svolgimento-gara.md
+     │   ├── ch09-esecuzione-sal-collaudo.md
+     │   ├── ch10-subappalto-subaffidamento.md
+     │   ├── ch11-varianti-riserve.md
+     │   ├── ch12-penali-risoluzione.md
+     │   ├── ch13-settori-speciali.md
+     │   ├── ch14-concessioni-ppp.md
+     │   ├── ch15-contenzioso-anac.md
+     │   └── ch16-cam-ambiente.md
+     ├── glossary.md
+     ├── patterns.md
+     └── cheatsheet.md
+
+● User answered Claude's questions:
+  ⎿  · Procedere con la Full Conversion della skill codice-appalti? → Solo 
+     capitoli DTC chiave
+
+● Solo capitoli DTC — 6 capitoli operativi mirati. Creo la struttura e analizzo
+  le sezioni rilevanti.
+
+● PowerShell(New-Item -ItemType Directory -Path
+            "C:\Users\archi\.claude\skills\codice-appalti\chapters" -Force |
+            Out-Null
+            "Directory creata: C:\Users\archi\.claude\skills\co…)
+  ⎿  Directory creata: C:\Users\archi\.claude\skills\codice-appalti\
+
+● PowerShell(# Find line numbers for key articles
+            $lines = Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\full_text.txt"
+            -Encoding UTF8…)
+  ⎿  Totale righe: 17372
+     Art.1 → riga 27: Articolo 1. Principio del risultato. ................
+     ................ ..........
+     … +39 lines (ctrl+o to expand)
+
+● PowerShell(# Find precise ranges for key sections in the actual content (skip
+            TOC ~440 lines)
+            $lines = Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\full_…)
+  ⎿  Art.1 → riga 7757
+     Art.2 → riga 462
+     Art.3 → riga 476
+     … +36 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+● Mappa articoli trovata. Ora estraggo le sezioni rilevanti per ogni capitolo
+  DTC.
+
+● PowerShell(# Find Art. 120 (missing from previous scan)
+            $lines = Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\full_text.txt"
+            -Encoding UTF8…)
+  ⎿  (No output)
+
+● PowerShell($lines = Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\full_text.txt"
+            -Encoding UTF8
+            # Search for 120 more broadly…)
+  ⎿  Error: Exit code 1
+     ParserError: 
+     Line |
+        7 |  } | Select-Object -First 30
+          |    ~
+          | An empty pipe element is not allowed.
+
+● PowerShell($lines = Get-Content
+            "C:\Users\archi\AppData\Local\Temp\book_skill_work\full_text.txt"
+            -Encoding UTF8
+            $results = @()…)
+  ⎿  Riga 4355: salvo quanto previsto dall’articolo 120, comma 1, lettera d
+     ), la cessione del contratto è nulla . È
+     Riga 4481: Articolo  120. Modifica dei contratti in corso di esecuzion
+     … +8 lines (ctrl+o to expand)
+
+● Art.120 trovato a riga 4481. Ora leggo le sezioni chiave per ogni capitolo.
+
+  Read 1 file (ctrl+o to expand)
+
+● Ora leggo le sezioni chiave rimanenti in parallelo.
+
+  Read 1 file (ctrl+o to expand)
+
+● Ho letto tutte le sezioni chiave. Ora genero i 6 capitoli e i file di
+  supporto.
+
+● Write(~\.claude\skills\codice-appalti\chapters\ch01-principi-generali.md)
+  ⎿  Wrote 56 lines to ..\..\..\.claude\skills\codice-appalti\chapters\ch01
+     -principi-generali.md
+       2 # Capitolo 1: Principi Generali (Art. 1-11, D.Lgs. 36/2023)
+       3 ## Idea Centrale
+         o al mercato, buona fede, conservazione dell'equilibrio) governa
+         no ogni fase dell'appalto — affidamento ed esecuzione — e devono
+       5  guidare tutte le valutazioni del DTC.
+       6 ## Framework: I 5 Principi-Cardine
+       8 **Art. 1 — Principio del risultato**
+       9 - Obiettivo: massima tempestività + miglior rapporto qualità/pre
+      10 - La concorrenza e la trasparenza sono *strumenti funzionali* al
+          risultato, non fini in sé
+     … +76 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\chapters\ch02-revisione-prezzi.md)
+  ⎿  Wrote 62 lines to ..\..\..\.claude\skills\codice-appalti\chapters\ch02
+     -revisione-prezzi.md
+       2 # Capitolo 2: Revisione Prezzi (Art. 60, D.Lgs. 36/2023)
+       3 ## Idea Centrale
+          documenti di gara. Non sono un diritto discrezionale dell'appal
+         tatore — la SA deve inserirle, e si attivano automaticamente al 
+         superamento della soglia.
+       6 ## Framework: Meccanismo Revisione Prezzi
+       7 
+       9 - Si attiva quando la variazione di costo supera il **5%** dell'
+         importo complessivo del contratto
+      10 - Opera nella misura dell'**80%** della variazione stessa
+     … +83 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\chapters\ch03-esecuzione-sal-collaudo.md
+       )
+  ⎿  Wrote 92 lines to ..\..\..\.claude\skills\codice-appalti\chapters\ch03
+     -esecuzione-sal-collaudo.md
+         gs. 36/2023): Esecuzione, SAL e Collaudo (Art. 114-116, 125, D.L
+       3 ## Idea Centrale
+         C (lato impresa) interagisce con tutti e tre: esegue gli ordini 
+          collaudo. I termini di pagamento sono perentori: il SAL va paga
+         to in 30 giorni.
+       6 ## Framework: Struttura dell'Esecuzione
+       8 ### Organigramma (Art. 114)
+         i avvale di DL, CSE, collaudatorentrolla i livelli di qualità; s
+         inistrativo; nomina su proposta RUP prima dell'avvio della proce
+         dura
+     … +128 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\chapters\ch04-penali-garanzie.md)  ⎿  Wrote 82 lines to ..\..\..\.claude\skills\codice-appalti\chapters\ch04
+     -penali-garanzie.md
+         7, 126, D.Lgs. 36/2023)remi di Accelerazione e Garanzie (Art. 11
+       3 ## Idea Centrale
+       4 Le penali per ritardo sono obbligatorie in tutti i contratti e s
+         rispetto al cronoprogramma e gestire la comunicazione formale pe
+         r evitare o contestare le penali. Le garanzie (fideiussione defi
+         li.iva, polizza CAR/RCT) sono obblighi contrattuali, non opziona
+       6 ## Framework: Penali (Art. 126)
+       7 
+       9 | Parametro | Valore |
+      10 |-----------|--------|
+     … +109 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\chapters\ch05-subappalto.md)
+  ⎿  Wrote 90 lines to
+     ..\..\..\.claude\skills\codice-appalti\chapters\ch05-subappalto.md
+         023)pitolo 5: Subappalto e Subaffidamenti (Art. 119, D.Lgs. 36/2
+       3 ## Idea Centrale
+         ppalto (30% del vecchio D.Lgs. 50/2016). Il subappalto è ora lib
+         di gara, ma rimane soggetto ad autorizzazione preventiva e a reg
+         ole stringenti su qualificazione, DURC e responsabilità solidale
+       5 .
+         orie non subappaltabili — verificare sempre il CSA del contratto
+       7 .
+       9 ## Framework: Cosa È e Non È Subappalto
+      10 ### È Subappalto (Art. 119 comma 2)
+     … +120 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\chapters\ch06-varianti-sospensioni-risol
+       uzione.md)
+  ⎿  Wrote 126 lines to ..\..\..\.claude\skills\codice-appalti\chapters\ch0
+     6-varianti-sospensioni-risoluzione.md
+        120-122, D.Lgs. 36/2023)Sospensioni, Riserve e Risoluzione (Art. 
+      2 
+      4 Varianti, sospensioni e riserve sono i tre strumenti del DTC per 
+        gestire gli imprevisti dell'esecuzione. I termini sono perentori:
+        pi. La risoluzione è l'extrema ratio che la SA attiva solo dopo l
+        'escussione delle penali.
+      6 ## Framework: Modifiche Contrattuali (Art. 120)
+      7 
+      9 Il contratto può essere modificato senza nuova procedura nei segu
+        enti casi:
+     … +178 lines (ctrl+o to expand)
+
+● Ora genero i file di supporto e il SKILL.md principale.
+
+● Write(~\.claude\skills\codice-appalti\glossary.md)
+  ⎿  Wrote 69 lines to ..\..\..\.claude\skills\codice-appalti\glossary.md
+      2 # Glossario — D.Lgs. 36/2023 Codice dei Contratti Pubblici
+        o e contabilità; sostituisce progressivamente il DM 49/2018 come 
+        li, collaudo.Codice. Contiene le modalità per riserve, SAL, verba
+      4 
+        gata entro 15gg dall'inizio; garantita da fideiussione; recuperat
+        nei documenti di gara. (Art. 125)Può arrivare al 30% se previsto 
+      6 
+        da ANAC; usata per verifica dichiarazioni degli OE e dei subappal
+      8 tatori. (Art. 23)
+      9 **CAR** — Polizza "Tutti i Rischi del Can
+     … +129 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\cheatsheet.md)
+  ⎿  Wrote 73 lines to ..\..\..\.claude\skills\codice-appalti\cheatsheet.md
+       2 # Cheatsheet — D.Lgs. 36/2023 | Riferimento Rapido per il DTC
+       3 ## Termini Critici per il DTC
+       5 | Evento | Termine | Norma | Conseguenza del Mancato Rispetto |
+       6 |--------|---------|-------|----------------------------------|
+       7 | Erogazione anticipazione | 15gg dall'inizio | Art. 125 c.1 | S
+       8 | Recupero anticipazione | Proporzionale a ogni SAL | Art. 125 c
+         .1 | Verifica a ogni SAL |
+         | Art. 125 c.5 | Mora automatica SA |P) | 7gg dall'adozione SAL 
+      10 | Pagamento SAL | 30gg dall'adozione SAL | Art. 125 c.2 | Intere
+         ssi moratori D.Lgs. 231/2002 |
+     … +96 lines (ctrl+o to expand)
+
+● Write(~\.claude\skills\codice-appalti\patterns.md)
+  ⎿  Wrote 108 lines to ..\..\..\.claude\skills\codice-appalti\patterns.md
+       2 # Pattern Operativi — D.Lgs. 36/2023 per il DTC
+       3 ## Pattern 1: Gestione Anticipazione Contrattuale
+       4 
+         lavori.o usare**: All'avvio del contratto, dopo la consegna dei 
+       6 
+       7 **Come**:
+         ) — salvo esclusioni dell'Allegato II.14'anticipazione (Art. 125
+       9 2. Richiedere l'erogazione entro 15gg dall'effettivo inizio
+      10 3. Costituire fideiussione pari all'anticipazione + interessi le
+         gali (periodo previsto per il recupero)
+     … +139 lines (ctrl+o to expand)
+
+● Ora il file principale SKILL.md:
+
+● Write(~\.claude\skills\codice-appalti\SKILL.md)
+  ⎿  Wrote 135 lines to ..\..\..\.claude\skills\codice-appalti\SKILL.md
+       2 name: codice-appalti
+         rettivo D.Lgs. 209/2024. Usa quando devi rispondere a domande su
+          appalti pubblici italiani: anticipazione contrattuale (Art.125)
+         serve (Art.120-121), penali (Art.126), SAL e collaudo (Art.116),
+          risoluzione (Art.122). Normativa operativa per il Direttore Tec
+       4 allowed-tools:re (DTC) dell'impresa appaltatrice."
+       6   - Grep
+       7 argument-hint: [articolo, istituto, termine DTC]
+       9 ---
+      10 # D.Lgs. 36/2023 — Codice dei Contratti Pubblici
+     … +180 lines (ctrl+o to expand)
+
+● Pulizia e verifica finale:
+
+● PowerShell(# Cleanup temp workdir
+            python -c "import shutil, pathlib, tempfile;
+            shutil.rmtree(pathlib.Path(tempfile.gettempdir()) /
+            'book_skill_work', ignore_errors=True);…)
+  ⎿  Temp dir rimosso
+     chapters   0 KB
+     cheatsheet.md      4.3 KB
+     … +9 lines (ctrl+o to expand)
+
+● La skill è attiva — appare già nell'elenco degli skill disponibili come
+  codice-appalti.
+
+  ---
+  ✅ Skill codice-appalti creata da codiceappalti2023.pdf (366 pag, 246K parole)
+
+  ~/.claude/skills/codice-appalti/
+  ├── SKILL.md                         7.1 KB  — framework + indice + regola
+  d'oro DTC
+  ├── chapters/
+  │   ├── ch01-principi-generali.md    3.6 KB  — Art. 1-11
+  │   ├── ch02-revisione-prezzi.md     3.6 KB  — Art. 60 + correttivo 2024
+  │   ├── ch03-esecuzione-sal-collaudo 5.5 KB  — Art. 114-116, 125
+  │   ├── ch04-penali-garanzie.md      4.7 KB  — Art. 117, 126
+  │   ├── ch05-subappalto.md           5.4 KB  — Art. 119
+  │   └── ch06-varianti-sospensioni    7.7 KB  — Art. 120-122
+  ├── glossary.md                       5.9 KB  — 35 termini chiave
+  ├── patterns.md                       5.1 KB  — 7 pattern operativi DTC
+  └── cheatsheet.md                     4.3 KB  — tabelle termini/percentuali
+
+  Nota importante rilevata dal testo: il D.Lgs. 36/2023 ha eliminato il limite 
+  del 30% al subappalto (era nel vecchio D.Lgs. 50/2016, Art. 105). Il nuovo
+  Art. 119 non fissa una soglia percentuale fissa — il CSA può introdurre limiti
+   specifici. Il CLAUDE.md riporta ancora il 30% come limite: potrebbe riferirsi
+   a contratti stipulati con il vecchio codice o a un CSA specifico.
+
+✻ Sautéed for 12m 46s
+
+> Fix limite subappalto Art. 119 D.Lgs. 36/2023 (2026-05-23)                    
+                                                                                
+  PROBLEMA RILEVATO DA SKILL codice-appalti:                                    
+  Il D.Lgs. 36/2023 Art. 119 NON fissa più un limite percentuale fisso          
+  al subappalto (il 30% era nel vecchio D.Lgs. 50/2016 Art. 105).               
+  Il nuovo codice lascia al CSA la facoltà di introdurre limiti specifici.      
+  Pertanto il limite deve essere dinamico: si usa quello del CSA se presente,   
+  altrimenti nessun limite fisso di legge.                                      
+                                                                                
+  FILE DA MODIFICARE: app.py, modules/operatori_tab.py, CLAUDE.md               
+                                                                                
+  ---                                                                           
+                                                                                
+  1️⃣ AGGIORNA CLAUDE.md                                                         
+                                                                                
+  SOSTITUISCI:                                                                  
+  - Subappalto: max **30%** importo netto (Art. 119 D.Lgs. 36/2023)             
+                                                                                
+  CON:                                                                          
+  - Subappalto: **nessun limite fisso di legge** (Art. 119 D.Lgs. 36/2023 — il  
+  D.Lgs. 36/2023 ha eliminato il limite del 30% presente nel vecchio D.Lgs.     
+  50/2016); il limite è definito dal CSA — se non indicato nel CSA non si       
+  applica alcuna soglia percentuale fissa                                       
+                                                                                
+  ---                                                                           
+                                                                                
+  2️⃣ AGGIORNA LOGICA LIMITE SUBAPPALTO IN app.py                                
+                                                                                
+  Ovunque nel codice ci sia un limite hardcodato al 30% per il subappalto,      
+  SOSTITUISCI con logica dinamica:                                              
+                                                                                
+      # Art. 119 D.Lgs. 36/2023 — limite definito dal CSA, non dalla legge      
+      limite_subappalto = csa_data.get("subappalto_percentuale_massima")        
+                                                                                
+      if limite_subappalto:                                                     
+          limite_subappalto = float(limite_subappalto)                          
+          label_limite_sub = f"{limite_subappalto:.0f}% (da CSA)"               
+          ha_limite_sub = True                                                  
+      else:                                                                     
+          limite_subappalto = None                                              
+          label_limite_sub = "nessun limite (Art. 119 D.Lgs. 36/2023)"          
+          ha_limite_sub = False                                                 
+                                                                                
+  Nella Dashboard KPI subappalti:                                               
+                                                                                
+      if ha_limite_sub:                                                         
+          delta_sub = f"{perc_sub:.1f}% / {label_limite_sub}"                   
+          colore_sub = "inverse" if perc_sub > limite_subappalto else "off"     
+      else:                                                                     
+          delta_sub = f"{perc_sub:.1f}% — {label_limite_sub}"                   
+          colore_sub = "off"                                                    
+                                                                                
+      st.metric(                                                                
+          "🏗️ Subappalti",                                                      
+          f"€ {tot_sub:,.2f}",                                                  
+          delta=delta_sub,                                                      
+          delta_color=colore_sub                                                
+      )                                                                         
+                                                                                
+  ---                                                                           
+                                                                                
+  3️⃣ AGGIORNA TAB SUB E SUBAFFIDAMENTI IN app.py                                
+                                                                                
+  SOSTITUISCI il blocco limite subappalto con:                                  
+                                                                                
+      with tab_sub:                                                             
+          # Art. 119 D.Lgs. 36/2023 — limite dinamico da CSA                    
+          limite_sub_csa = csa_data.get("subappalto_percentuale_massima")       
+          if limite_sub_csa:                                                    
+              st.info(                                                          
+                  f"🔒 **Limite subappalto da CSA**: max                        
+  **{float(limite_sub_csa):.0f}%** "                                            
+                  f"dell'importo contrattuale netto (Art. 119 D.Lgs. 36/2023)"  
+              )                                                                 
+          else:                                                                 
+              st.info(                                                          
+                  "ℹ️ **Nessun limite percentuale fisso** per il subappalto "   
+                  "(Art. 119 D.Lgs. 36/2023 — il D.Lgs. 36/2023 ha rimosso "    
+                  "il limite del 30% del vecchio D.Lgs. 50/2016). "             
+                  "Verifica eventuali limiti nel CSA."                          
+              )                                                                 
+                                                                                
+          # Limite subaffidamenti — Art. 122 invariato                          
+          limite_subaffid_10 = importo_netto * 0.10                             
+          st.info(                                                              
+              f"🔒 **Limite subaffidamenti Art. 122**: max "                    
+              f"**€ {limite_subaffid_10:,.0f}** (10% importo netto)"            
+          )                                                                     
+                                                                                
+  ---                                                                           
+                                                                                
+  4️⃣ AGGIORNA modules/operatori_tab.py                                          
+                                                                                
+  Cerca tutte le occorrenze di "30%" relative al subappalto e                   
+  SOSTITUISCI con logica dinamica:                                              
+                                                                                
+      limite_sub = float(csa_data.get("subappalto_percentuale_massima") or 0)   
+                                                                                
+      if limite_sub > 0:                                                        
+          if perc_subappalto > limite_sub:                                      
+              st.error(                                                         
+                  f"❌ Subappalto {perc_subappalto:.1f}% supera limite CSA      
+  {limite_sub:.0f}% "                                                           
+                  f"(Art. 119 D.Lgs. 36/2023)"                                  
+              )                                                                 
+          else:                                                                 
+              st.success(                                                       
+                  f"✅ Subappalto {perc_subappalto:.1f}% entro limite CSA       
+  {limite_sub:.0f}%"                                                            
+              )                                                                 
+      else:                                                                     
+          st.info(                                                              
+              f"ℹ️ Subappalto {perc_subappalto:.1f}% — nessun limite            
+  percentuale "                                                                 
+              f"nel CSA (Art. 119 D.Lgs. 36/2023)"                              
+          )                                                                     
+                                                                                
+  ---                                                                           
+                                                                                
+  5️⃣ AGGIORNA csa_analyzer.py — EXTRACTION_PROMPT                               
+                                                                                
+  Nella descrizione del campo subappalto_percentuale_massima,                   
+  SOSTITUISCI:                                                                  
+                                                                                
+      "subappalto_percentuale_massima: percentuale massima subappaltabile       
+      indicata nel CSA (art.119 D.Lgs.36/2023). Il limite legale di default     
+      è 30%; se il CSA prevede una percentuale diversa indicarla."              
+                                                                                
+  CON:                                                                          
+                                                                                
+      "subappalto_percentuale_massima: percentuale massima subappaltabile       
+      indicata ESPLICITAMENTE nel CSA (Art. 119 D.Lgs. 36/2023).                
+      ATTENZIONE: il D.Lgs. 36/2023 ha eliminato il limite fisso del 30%        
+      presente nel vecchio D.Lgs. 50/2016. Restituire il valore solo se         
+      esplicitamente indicato nel CSA, altrimenti null."                        
+                                                                                
+  ---                                                                           
+                                                                                
+  6️⃣ AGGIORNA _valida_csa_data() in csa_analyzer.py                             
+                                                                                
+  SOSTITUISCI il blocco validazione subappalto:                                 
+                                                                                
+      # Art. 119 D.Lgs. 36/2023 — nessun limite fisso                           
+      sub_pct = data.get("subappalto_percentuale_massima")                      
+      if sub_pct is not None:                                                   
+          if sub_pct <= 0:                                                      
+              data["subappalto_percentuale_massima"] = None                     
+              warnings.append("⚠️ Subappalto percentuale <= 0 — reimpostato a   
+  null")                                                                        
+          elif sub_pct > 100:                                                   
+              warnings.append(                                                  
+                  f"⚠️ Subappalto {sub_pct}% > 100% — probabile errore di       
+  estrazione"                                                                   
+              )                                                                 
+          # RIMOSSO: controllo > 30% non più applicabile con D.Lgs. 36/2023     
+                                                                                
+  ---                                                                           
+                                                                                
+  RISULTATO ATTESO:                                                             
+  ✅ Nessun limite fisso 30% hardcodato nel codice                              
+  ✅ Limite dinamico: usa valore CSA se presente, altrimenti nessun limite      
+  ✅ Dashboard KPI mostra limite da CSA o "nessun limite"                       
+  ✅ Tab Sub mostra info normativa corretta Art. 119                            
+  ✅ csa_analyzer non estrae 30% come default                                   
+  ✅ CLAUDE.md aggiornato con nota correttiva                                   
+  ✅ streamlit run app.py senza errori                                          
+                                                                                
+  Applicare e fare push su GitHub.                                              
+
+● Leggo i file rilevanti in parallelo prima di modificare.
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Leggo le sezioni specifiche da modificare.
+
+  Searched for 1 pattern, read 3 files (ctrl+o to expand)
+
+● Ho tutto il contesto. Applico le modifiche in parallelo ai 4 file.
+
+● Update(CLAUDE.md)
+  ⎿  Added 1 line, removed 1 line
+      24  ### 📋 ARTICOLI CHIAVE D.LGS. 36/2023
+      25  - **Art. 60** — Revisione prezzi (franchigia **3%** per contrat
+          ti lavori, clausole revisionali — D.Lgs. 209/2024 correttivo)
+      26  - **Art. 113** — Penali per ritardo (‰ giornaliero, cap massimo
+          )
+      27 -- **Art. 119** — Subappalto (limite 30% importo contrattuale)  
+      27 +- **Art. 119** — Subappalto (nessun limite fisso — il D.Lgs. 36
+         +/2023 ha eliminato il 30% del D.Lgs. 50/2016; limite definito d
+         +al CSA)                                                        
+      28  - **Art. 120** — Varianti in corso d'opera e riserve
+      29  - **Art. 121** — Riserve: iscrizione tempestiva, esplicitazione
+           15gg, risposta DL 30gg
+      30  - **Art. 122** — Subaffidamenti (limite 10% importo contrattual
+          e)
+
+● Update(CLAUDE.md)
+  ⎿  Added 1 line, removed 1 line
+      91  
+      92  1. **Cita la norma nei commenti** quando hardcodi un limite leg
+          ale (es. `# Art. 125 D.Lgs. 36/2023`)
+      93  2. **Limiti numerici con fonte normativa**:
+      94 -   - Subappalto: max **30%** importo netto (Art. 119 D.Lgs. 36/
+         -2023)                                                          
+      94 +   - Subappalto: **nessun limite fisso di legge** (Art. 119 D.L
+         +gs. 36/2023 — il D.Lgs. 36/2023 ha eliminato il limite del 30% 
+         +presente nel vecchio D.Lgs. 50/2016); il limite è definito dal 
+         +CSA — se non indicato nel CSA non si applica alcuna soglia perc
+         +entuale fissa                                                  
+      95     - Subaffidamenti: max **10%** importo del singolo subappalto
+           (Art. 122 D.Lgs. 36/2023)
+      96     - Anticipazione: max **20%** importo contrattuale netto (Art
+          . 125 D.Lgs. 36/2023)
+      97     - Riserve — iscrizione: **15 giorni** dall'evento generatore
+           (Art. 121 D.Lgs. 36/2023)
+
+● Update(app.py)
+  ⎿  Added 13 lines, removed 2 lines
+      915          st.divider()
+      916          col_a, col_b, col_c, col_d = st.columns(4)
+      917          with col_a:
+      918 -            delta_sub = f"{perc_sub:.1f}% / 30% max" if perc_s
+          -ub is not None else None                                      
+      919 -            st.metric("🏗️ Subappalti", f"€ {tot_sub:,.0f}", del
+          -ta=delta_sub, delta_color="inverse" if (perc_sub or 0) > 30 el
+          -se "off")                                                     
+      918 +            # Art. 119 D.Lgs. 36/2023 — limite dinamico da CSA
+          +, non fisso per legge                                         
+      919 +            limite_sub_csa = float(csa_data.get("subappalto_pe
+          +rcentuale_massima") or 0)                                     
+      920 +            if perc_sub is not None:                          
+      921 +                if limite_sub_csa > 0:                        
+      922 +                    delta_sub = f"{perc_sub:.1f}% / {limite_su
+          +b_csa:.0f}% (CSA)"                                            
+      923 +                    colore_sub = "inverse" if perc_sub > limit
+          +e_sub_csa else "off"                                          
+      924 +                else:                                         
+      925 +                    delta_sub = f"{perc_sub:.1f}% — nessun lim
+          +ite (Art. 119)"                                               
+      926 +                    colore_sub = "off"                        
+      927 +            else:                                             
+      928 +                delta_sub = None                              
+      929 +                colore_sub = "off"                            
+      930 +            st.metric("🏗️ Subappalti", f"€ {tot_sub:,.0f}", de
+          +lta=delta_sub, delta_color=colore_sub)                        
+      931          with col_b:
+      932              delta_subaffid = f"{perc_subaffid:.1f}% / 10% max"
+            if perc_subaffid is not None else None
+      933              st.metric("🏭 Subaffidamenti", f"€ {tot_subaffid:,
+           .0f}", delta=delta_subaffid, delta_color="inverse" if (perc_su
+           baffid or 0) > 10 else "off")
+
+● Update(app.py)
+  ⎿  Added 4 lines, removed 1 line
+      1242      col_s1, col_s2 = st.columns(2)
+      1243      with col_s1:
+      1244          sub_pct = csa_data.get("subappalto_percentuale_massim
+            a")
+      1245 -        st.markdown(f"**Percentuale massima:** {sub_pct or 30
+           -}%")                                                         
+      1245 +        if sub_pct:                                          
+      1246 +            st.markdown(f"**Percentuale massima (CSA):** {sub
+           +_pct}%")                                                     
+      1247 +        else:                                                
+      1248 +            st.markdown("**Percentuale massima:** nessun limi
+           +te (Art. 119 D.Lgs. 36/2023)")                               
+      1249          sub_aut = csa_data.get("subappalto_autorizzazione_ric
+            hiesta")
+      1250          st.markdown(f"**Autorizzazione SA richiesta:** {'Sì' 
+            if sub_aut else 'No'}")
+      1251          sub_qual = csa_data.get("subappalto_qualificazione_ri
+            chiesta")
+
+● Update(app.py)  ⎿  Added 17 lines, removed 2 lines
+      2271  
+      2272          st.divider()
+      2273  
+      2274 +        # Art. 119 D.Lgs. 36/2023 — limite subappalto dinamic
+           +o da CSA                                                     
+      2275 +        limite_sub_csa = csa_data.get("subappalto_percentuale
+           +_massima")                                                   
+      2276 +        if limite_sub_csa:                                   
+      2277 +            st.info(                                         
+      2278 +                f"🔒 **Limite subappalto da CSA**: max **{flo
+           +at(limite_sub_csa):.0f}%** "                                 
+      2279 +                f"dell'importo contrattuale netto (Art. 119 D
+           +.Lgs. 36/2023)"                                              
+      2280 +            )                                                
+      2281 +        else:                                                
+      2282 +            st.info(                                         
+      2283 +                "ℹ️ **Nessun limite percentuale fisso** per il
+           + subappalto "                                                
+      2284 +                "(Art. 119 D.Lgs. 36/2023 — il D.Lgs. 36/2023
+           + ha rimosso "                                                
+      2285 +                "il limite del 30% del vecchio D.Lgs. 50/2016
+           +). "                                                         
+      2286 +                "Verifica eventuali limiti nel tuo CSA."     
+      2287 +            )                                                
+      2288 +        # Art. 122 D.Lgs. 36/2023 — limite subaffidamenti inv
+           +ariato al 10%                                                
+      2289          limite_subaffid_10 = importo_netto * 0.10
+      2290          st.info(
+      2276 -            f"🔒 **Limite Art. 122 D.Lgs. 36/2023**: "       
+      2277 -            f"Subaffidamenti max **€ {limite_subaffid_10:,.0f
+           -}** (10% importo netto)"                                     
+      2291 +            f"🔒 **Limite subaffidamenti Art. 122 D.Lgs. 36/2
+           +023**: "                                                     
+      2292 +            f"max **€ {limite_subaffid_10:,.0f}** (10% import
+           +o netto)"                                                    
+      2293          )
+      2294          oe = st.session_state.get("operatori_economici", {})
+      2295          subs = oe.get("subappaltatori", [])
+
+● Ora aggiorno operatori_tab.py:
+
+● Update(modules\operatori_tab.py)
+  ⎿  Added 1 line, removed 1 line
+      3  
+      4  Struttura gerarchica a tre livelli:
+      5    L0 — Appaltatore principale (dati + documenti)
+      6 -  L1 — Subappaltatori (dipendono dall'appaltatore, limite 30% ar
+        -t.119 D.Lgs.36/2023)                                            
+      6 +  L1 — Subappaltatori (dipendono dall'appaltatore; nessun limite
+        + fisso di legge — art.119 D.Lgs.36/2023; limite definito dal CSA
+        +)                                                               
+      7    L2 — Subaffidatari (dipendono da un subappaltatore specifico)
+      8  
+      9  Funzione pubblica: render_operatori_tab(csa_data, importo_base, 
+         salva_fn, results_dir)
+
+● Update(modules\operatori_tab.py)
+  ⎿  Added 2 lines, removed 2 lines
+      20  _TAB_NOME = "Operatori Economici"
+      21  _DURC_VALIDITA_GG = 120
+      22  _DURC_ALERT_GG = 30
+      23 -_SOGLIA_ATTENZIONE = 25.0                                      
+      24 -_SOGLIA_LIMITE = 30.0                                          
+      23 +_SOGLIA_ATTENZIONE = 25.0  # soglia avviso se presente limite C
+         +SA                                                             
+      24 +_SOGLIA_LIMITE = 30.0      # usata solo se il CSA indica un lim
+         +ite (default conservativo)                                     
+      25  _TIPI_FILE = ["pdf", "docx", "doc", "xlsx", "jpg", "png"]
+      26  _STATI_AUT = ["in_attesa", "autorizzato", "negato"]
+      27  _STATI_LABEL = {
+
+● Ora leggo la firma della funzione _render_riepilogo_sub per capire come passa
+  importo_base e se riceve anche csa_data:
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Aggiorno _render_limite per accettare csa_data e usare il limite dinamico, poi
+   aggiorno il call-site:
+
+● Update(modules\operatori_tab.py)
+  ⎿  Added 33 lines, removed 10 lines
+      441  
+      442  # ── Livello 1 — Subappaltatori ──────────────────────────────
+           ───────────────────
+      443  
+      444 -def _render_limite(subs: list, importo_base: float) -> None:  
+      444 +def _render_limite(subs: list, importo_base: float, csa_data: 
+          +dict | None = None) -> None:                                  
+      445 +    # Art. 119 D.Lgs. 36/2023 — nessun limite fisso; usa valor
+          +e CSA se presente                                             
+      446 +    limite_csa = float((csa_data or {}).get("subappalto_percen
+          +tuale_massima") or 0)                                         
+      447 +    ha_limite = limite_csa > 0                                
+      448 +                                                              
+      449      tot_sub = sum(
+      450          float(s.get("importo", 0) or 0) for s in subs if s.get
+           ("tipo") == "subappalto"
+      451      )
+     ...
+      455  
+      456      c1, c2, c3 = st.columns(3)
+      457      with c1:
+      458 +        if importo_base > 0:                                  
+      459 +            if ha_limite:                                     
+      460 +                delta_label = f"{perc:.1f}% / {limite_csa:.0f}
+          +% (CSA)"                                                      
+      461 +                delta_col = "inverse" if perc > limite_csa els
+          +e ("off" if perc > limite_csa * 0.85 else "normal")           
+      462 +            else:                                             
+      463 +                delta_label = f"{perc:.1f}% — nessun limite (A
+          +rt. 119)"                                                     
+      464 +                delta_col = "normal"                          
+      465 +        else:                                                 
+      466 +            delta_label = None                                
+      467 +            delta_col = "off"                                 
+      468          st.metric(
+      469              "💶 Totale subappaltato", f"€ {tot_sub:,.0f}",
+      456 -            delta=f"{perc:.1f}% / 30% max" if importo_base > 0
+          - else None,                                                   
+      457 -            delta_color="inverse" if perc > 30 else ("off" if 
+          -perc > 25 else "normal"),                                     
+      470 +            delta=delta_label,                                
+      471 +            delta_color=delta_col,                            
+      472          )
+      473      with c2:
+      474          st.metric(
+     ...
+      477              delta_color="off",
+      478          )
+      479      with c3:
+      466 -        if importo_base > 0:                                  
+      467 -            residuo = importo_base * 0.3 - tot_sub            
+      480 +        if importo_base > 0 and ha_limite:                    
+      481 +            residuo = importo_base * (limite_csa / 100) - tot_
+          +sub                                                           
+      482              st.metric(
+      469 -                "📊 Residuo consentito", f"€ {max(residuo, 0):
+          -,.0f}",                                                       
+      483 +                "📊 Residuo consentito (CSA)", f"€ {max(residu
+          +o, 0):,.0f}",                                                 
+      484                  delta="LIMITE SUPERATO" if residuo < 0 else No
+           ne,
+      485                  delta_color="inverse" if residuo < 0 else "off
+           ",
+      486              )
+      487  
+      474 -    if perc > _SOGLIA_LIMITE:                                 
+      475 -        st.error(f"🚨 LIMITE SUPERATO: {perc:.1f}% > 30% (art.
+          -119 D.Lgs.36/2023)")                                          
+      476 -    elif perc > _SOGLIA_ATTENZIONE:                           
+      477 -        st.warning(f"⚠️ Attenzione: {perc:.1f}% — vicino al lim
+          -ite del 30%")                                                 
+      488 +    if ha_limite:                                             
+      489 +        if perc > limite_csa:                                 
+      490 +            st.error(                                         
+      491 +                f"🚨 LIMITE SUPERATO: {perc:.1f}% > {limite_cs
+          +a:.0f}% (limite CSA — art.119 D.Lgs.36/2023)"                 
+      492 +            )                                                 
+      493 +        elif perc > limite_csa * (_SOGLIA_ATTENZIONE / _SOGLIA
+          +_LIMITE):                                                     
+      494 +            st.warning(                                       
+      495 +                f"⚠️ Attenzione: {perc:.1f}% — vicino al limit
+          +e CSA del {limite_csa:.0f}%"                                  
+      496 +            )                                                 
+      497 +    else:                                                     
+      498 +        st.info(                                              
+      499 +            f"ℹ️ Subappalto {perc:.1f}% — nessun limite percen
+          +tuale nel CSA (art.119 D.Lgs.36/2023)"                        
+      500 +        )                                                     
+      501  
+      502  
+      503  def _render_form_sub(oe: dict, importo_base: float, salva_fn) 
+           -> None:
+
+● Update(modules\operatori_tab.py)
+  ⎿  Added 1 line, removed 1 line
+      740  
+      741      # L1 + L2
+      742      st.subheader("🏗️ L1/L2 — Subappaltatori e Subaffidatari")
+      743 -    _render_limite(oe["subappaltatori"], importo_base)        
+      743 +    _render_limite(oe["subappaltatori"], importo_base, csa_dat
+          +a)                                                            
+      744      st.divider()
+      745      _render_form_sub(oe, importo_base, salva_fn)
+      746  
+
+● Update(modules\operatori_tab.py)
+  ⎿  Added 1 line, removed 1 line
+      715      st.header("🏢 Operatori Economici")
+      716      st.caption(
+      717          "Struttura gerarchica: **Appaltatore** → **Subappaltat
+           ori** → **Subaffidatari**. "
+      718 -        "Limite subappalto: **30%** importo contrattuale (art.
+          -119 D.Lgs.36/2023)."                                          
+      718 +        "Subappalto: nessun limite fisso di legge (art.119 D.L
+          +gs.36/2023 — limite definito dal CSA se presente)."           
+      719      )
+      720  
+      721      common = csa_data.get("comune", "")
+
+● Ora csa_analyzer.py:
+
+● Update(modules\csa_analyzer.py)
+  ⎿  Added 1 line, removed 1 line
+      45    "collaudo_giorni": intero o null,
+      46    "importo_oneri_sicurezza": float o null,
+      47    "anticipazione_percentuale": percentuale anticipazione sull'i
+          mporto contrattuale (es. 20.0). null se non indicata esplicitam
+          ente (si applica il default 20% Art. 125 D.Lgs. 36/2023),
+      48 -  "subappalto_percentuale_massima": percentuale massima subappa
+         -ltabile come float (es. 30.0) o null se non indicata,          
+      48 +  "subappalto_percentuale_massima": percentuale massima subappa
+         +ltabile ESPLICITAMENTE indicata nel CSA come float (es. 25.0); 
+         +null se non indicata — il D.Lgs. 36/2023 non fissa un limite fi
+         +sso,                                                           
+      49    "subappalto_categorie_vietate": ["lista codici SOA o lavorazi
+          oni non subappaltabili"] o lista vuota [],
+      50    "subappalto_autorizzazione_richiesta": true se è richiesta au
+          torizzazione esplicita della SA, false altrimenti,
+      51    "subappalto_qualificazione_richiesta": true se il subappaltat
+          ore deve possedere qualificazione SOA, false altrimenti,
+
+● Update(modules\csa_analyzer.py)
+  ⎿  Added 1 line, removed 1 line
+      133  
+      134  anticipazione_percentuale: percentuale di anticipazione sull'i
+           mporto contrattuale netto (al netto del ribasso) prevista dal 
+           CSA o dal contratto. Il limite legale è 20% (Art. 125 D.Lgs. 3
+           6/2023); alcune SA prevedono percentuali inferiori (es. 10%, 1
+           5%). null se non indicata esplicitamente.
+      135  
+      136 -subappalto_percentuale_massima: percentuale massima subappalta
+          -bile indicata nel CSA (art.119 D.Lgs.36/2023). Il limite legal
+          -e di default è 30%; se il CSA prevede una percentuale diversa 
+          -(superiore o inferiore) indicarla. null se non esplicitamente 
+          -indicata.                                                     
+      136 +subappalto_percentuale_massima: percentuale massima subappalta
+          +bile indicata ESPLICITAMENTE nel CSA (art.119 D.Lgs.36/2023). 
+          +ATTENZIONE: il D.Lgs. 36/2023 ha eliminato il limite fisso del
+          + 30% presente nel vecchio D.Lgs. 50/2016 — non esiste più un d
+          +efault di legge. Restituire il valore solo se il CSA lo indica
+          + esplicitamente, altrimenti null.                             
+      137  
+      138  subappalto_categorie_vietate: lista delle categorie SOA o lavo
+           razioni per cui il subappalto è esplicitamente vietato (es. ca
+           tegoria prevalente, lavorazioni a carattere speciale). Lista v
+           uota [] se nessun divieto specifico è indicato.
+      139  
+
+● Update(modules\csa_analyzer.py)
+  ⎿  Added 6 lines, removed 6 lines
+      214      automaticamente i valori impossibili."""
+      215      warnings_val = []
+      216  
+      217 -    # Subappalto max 30% — Art. 119 D.Lgs. 36/2023            
+      217 +    # Art. 119 D.Lgs. 36/2023 — nessun limite fisso; usa solo 
+          +valore CSA                                                    
+      218      sub_pct = data.get("subappalto_percentuale_massima")
+      219      if sub_pct is not None:
+      220          try:
+      221              sub_pct = float(sub_pct)
+      222 -            if sub_pct > 30.0:                                
+      223 -                warnings_val.append(                          
+      224 -                    f"⚠️ Subappalto {sub_pct}% supera limite le
+          -gale 30% (Art. 119) — "                                       
+      225 -                    "verifica il testo del CSA"               
+      226 -                )                                             
+      222              if sub_pct <= 0:
+      223                  data["subappalto_percentuale_massima"] = None
+      224                  warnings_val.append("⚠️ Subappalto percentuale 
+           <= 0 — reimpostato a null")
+      225 +            elif sub_pct > 100:                               
+      226 +                warnings_val.append(                          
+      227 +                    f"⚠️ Subappalto {sub_pct}% > 100% — probab
+          +ile errore di estrazione"                                     
+      228 +                )                                             
+      229 +            # RIMOSSO: il D.Lgs. 36/2023 non fissa più il limi
+          +te al 30%                                                     
+      230          except (ValueError, TypeError):
+      231              pass
+      232  
+
+● Aggiorno anche demo_data.py per non suggerire 30% come dato di default:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(modules\demo_data.py)
+  ⎿  Added 1 line, removed 1 line
+      69      "collaudo_giorni": 180,
+      70      "importo_oneri_sicurezza": 27000.0,
+      71      # ── Subappalto & Subaffidamento ──────────────────────────
+          ─────────────────
+      72 -    "subappalto_percentuale_massima": 30.0,                    
+      72 +    "subappalto_percentuale_massima": 25.0,  # demo: CSA fissa 
+         +un limite del 25%                                              
+      73      "subappalto_categorie_vietate": ["OG3 — categoria prevalent
+          e"],
+      74      "subappalto_autorizzazione_richiesta": True,
+      75      "subappalto_qualificazione_richiesta": True,
+
+● Verifico che non rimangano occorrenze hardcodate del 30% relative al
+  subappalto:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Le occorrenze rimanenti sono tutte contestuali (testo storico, commenti, o
+  ratio per la soglia di attenzione) — nessun 30% rimasto come limite di legge
+  hardcodato. Verifico la sintassi:
+
+● Bash(cd "C:/Users/archi/Desktop/claudeai/STRUMENTODT" && python -m py_compile
+      app.py modules/operatori_tab.py modules/csa_analyzer.py
+      modules/demo_data.py && echo "O…)
+  ⎿  OK — nessun errore di sintassi
+
+● Commit e push:
+
+● Bash(cd "C:/Users/archi/Desktop/claudeai/STRUMENTODT" && git diff --stat)
+  ⎿  warning: in the working copy of 'CLAUDE.md', LF will be replaced by CR
+     LF the next time Git touches it
+     warning: in the working copy of 'modules/csa_analyzer.py', LF will be
+     … +12 lines (ctrl+o to expand)
+
+● Bash(cd "C:/Users/archi/Desktop/claudeai/STRUMENTODT" && git add CLAUDE.md
+      app.py modules/csa_analyzer.py modules/demo_data.py
+      modules/operatori_tab.py && git commit…)
+  ⎿  warning: in the working copy of 'CLAUDE.md', LF will be replaced by CR
+     LF the next time Git touches it
+     warning: in the working copy of 'modules/csa_analyzer.py', LF will be
+     … +8 lines (ctrl+o to expand)
+
+● Bash(cd "C:/Users/archi/Desktop/claudeai/STRUMENTODT" && git push)
+  ⎿  To https://github.com/micricco/STRUMENTODT.git
+        6db2a9d..53ef720  main -> main
+● Push completato. Riepilogo delle modifiche:
+
+  5 file aggiornati — nessun 30% rimasto come limite di legge:
+
+  ┌──────────────────┬───────────────────────────────────────────────────────┐
+  │       File       │                       Modifica                        │
+  ├──────────────────┼───────────────────────────────────────────────────────┤
+  │ CLAUDE.md        │ 2 occorrenze: "nessun limite fisso" + nota D.Lgs.     │
+  │                  │ 50/2016                                               │
+  ├──────────────────┼───────────────────────────────────────────────────────┤
+  │                  │ Dashboard KPI: limite dinamico da CSA o "nessun       │
+  │ app.py           │ limite (Art. 119)"; tab Sintesi CSA: mostra valore    │
+  │                  │ CSA se presente altrimenti "nessun limite"; tab Sub:  │
+  │                  │ info box con testo normativo corretto                 │
+  ├──────────────────┼───────────────────────────────────────────────────────┤
+  │                  │ _render_limite() accetta csa_data, calcola il residuo │
+  │ operatori_tab.py │  sulla soglia CSA, mostra st.info invece di warning   │
+  │                  │ se non c'è limite                                     │
+  ├──────────────────┼───────────────────────────────────────────────────────┤
+  │                  │ Prompt e schema JSON: "null se non esplicitamente     │
+  │ csa_analyzer.py  │ indicata" (rimosso default 30%); validazione: rimosso │
+  │                  │  il check > 30.0                                      │
+  ├──────────────────┼───────────────────────────────────────────────────────┤
+  │ demo_data.py     │ 30.0 → 25.0 (demo con CSA che fissa un limite del     │
+  │                  │ 25%, non il vecchio default)                          │
+  └──────────────────┴───────────────────────────────────────────────────────┘
+
+✻ Sautéed for 3m 59s
+
+> /export                                                                       
+  ⎿  Conversation copied to clipboard
