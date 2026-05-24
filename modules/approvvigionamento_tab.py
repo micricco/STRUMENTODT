@@ -193,6 +193,10 @@ def render_approvvigionamento_tab(
     salva_fn,
     results_dir,
 ) -> None:
+    if not api_key:
+        st.error("❌ API Key Anthropic non configurata")
+        return
+
     nome_progetto = (
         f"{csa_data.get('tipo_lavori', 'Cantiere')} — "
         f"{csa_data.get('comune', '')} ({csa_data.get('provincia', '')})"
@@ -248,6 +252,31 @@ def render_approvvigionamento_tab(
         cme_bytes = st.session_state.get("piano_cme_bytes")
         cme_nome = st.session_state.get("piano_cme_nome", "")
 
+        # Rileggi i bytes dal disco se non più in memoria
+        if not cme_bytes:
+            cme_path = st.session_state.get("piano_cme_path")
+            if cme_path and pathlib.Path(cme_path).exists():
+                cme_bytes = pathlib.Path(cme_path).read_bytes()
+                st.session_state["piano_cme_bytes"] = cme_bytes
+
+        # Prova a recuperare da doc_elaborati (documenti già caricati nel tab Documenti)
+        if not cme_bytes:
+            doc_elaborati = st.session_state.get("doc_elaborati", {})
+            for cat_docs in doc_elaborati.values():
+                for doc in (cat_docs or []):
+                    titolo = doc.get("titolo", "").lower()
+                    codice = doc.get("codice", "").lower()
+                    if any(k in titolo or k in codice for k in ["cme", "computo", "metrico", "estimativo"]):
+                        path = doc.get("path", "")
+                        if path and pathlib.Path(path).exists():
+                            cme_bytes = pathlib.Path(path).read_bytes()
+                            st.session_state["piano_cme_bytes"] = cme_bytes
+                            st.session_state["piano_cme_nome"] = pathlib.Path(path).name
+                            cme_nome = st.session_state["piano_cme_nome"]
+                            break
+                if cme_bytes:
+                    break
+
         if cme_bytes:
             st.success(f"✅ CME: **{cme_nome}** (già caricato)")
             if st.button("🔄 Sostituisci CME", key="sost_cme_approv"):
@@ -268,19 +297,29 @@ def render_approvvigionamento_tab(
         # ── Step 2: Estrazione materiali ──────────────────────────────────────
         st.subheader("2️⃣ Estrazione Materiali")
 
-        if st.button(
-            "🤖 Estrai materiali da CME",
-            key="btn_estrai_mat",
-            disabled=(not cme_bytes or not api_key),
-        ):
+        if st.button("🤖 Estrai materiali da CME", key="btn_estrai_mat"):
+            if not cme_bytes:
+                st.error("❌ File CME non disponibile. Ricarica il file.")
+                st.stop()
             with st.spinner("Analisi CME in corso…"):
-                from modules.csa_analyzer import _estrai_testo_pdf
-                testo = _estrai_testo_pdf(cme_bytes)
-                voci_cme = _estrai_materiali_da_cme(testo, api_key)
-                st.session_state["approv_voci_cme"] = voci_cme
-                salva_fn()
-                st.success(f"✅ Estratte {len(voci_cme)} voci materiali")
-                st.rerun()
+                try:
+                    from modules.csa_analyzer import _estrai_testo_pdf
+                    st.caption("📄 Estrazione testo dal PDF…")
+                    testo = _estrai_testo_pdf(cme_bytes)
+                    if not testo or len(testo) < 100:
+                        st.error("❌ Impossibile estrarre testo dal PDF. Verifica che non sia scansionato.")
+                        st.stop()
+                    st.caption(f"✅ Testo estratto ({len(testo):,} caratteri) — Analisi AI in corso…")
+                    voci_cme = _estrai_materiali_da_cme(testo, api_key)
+                    if not voci_cme:
+                        st.warning("⚠️ Nessun materiale trovato. Il CME potrebbe essere scansionato o in formato non leggibile.")
+                        st.stop()
+                    st.session_state["approv_voci_cme"] = voci_cme
+                    salva_fn()
+                    st.success(f"✅ Estratte {len(voci_cme)} voci materiali")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Errore estrazione: {e}")
 
         if not voci_cme:
             st.info("Nessun materiale estratto. Carica il CME e clicca 'Estrai materiali'.")
